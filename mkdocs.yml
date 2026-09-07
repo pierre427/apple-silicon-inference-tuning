@@ -53,6 +53,7 @@ nav:
   - Runtime & OS knobs: runtime-knobs.md
   - Quantization: quantization.md
   - Speculative decoding & MTP: speculative-decoding.md
+  - Heterogeneous GPU + ANE inference: heterogeneous-inference.md
   - Serving-level techniques: serving-techniques.md
   - Measuring it right: measurement.md
   - Glossary: glossary.md

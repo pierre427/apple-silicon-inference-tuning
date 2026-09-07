@@ -16,6 +16,7 @@ steady generation before choosing a lever.
 | Is short-context, width-one decode slow with gaps between GPU encoders? | Short encoder-interval trace | Compiled replay, batching, or a qualified megakernel |
 | Does latency worsen as context grows? | Context ladder, active/peak memory, KV estimate | KV sizing, wired-memory headroom, attention path |
 | Are many requests queued? | Queue delay, batch width, throughput knee, KV residency | Continuous batching and two-ceiling admission |
+| Is the GPU saturated while independent work waits and ANE is idle? | Ready-task DAG, handoff bytes/dtype, incumbent batch width | [Heterogeneous GPU + ANE](heterogeneous-inference.md), after preserving the GPU batch |
 | Does output substantially copy the prompt? | N-gram overlap and PLD committed tokens/cycle | Prompt-lookup decoding |
 
 If you cannot answer the first question, do not tune yet. Measure TTFT and TPOT
@@ -155,6 +156,21 @@ tokens per cycle, and draft/verify/rollback time. For APC, retain
 4. Compare speculation with batching at equal offered load; width does not
    automatically stack.
 
+### Saturated GPU plus an idle Apple Neural Engine
+
+1. Draw the dependency graph and identify work that is already ready while the
+   GPU executes the incumbent path.
+2. Keep the strongest GPU batch and fused kernel intact; do not split them just
+   to manufacture overlap.
+3. Require a coarse ANE stage with resident weights/state and a token-sized or
+   top-k result.
+4. Measure placement, handoff bytes and dtype, consumer-kernel selection, and
+   both engines' concurrent slowdown.
+5. Report batch-one latency separately from aggregate multi-request throughput.
+
+See [Heterogeneous GPU + ANE inference](heterogeneous-inference.md) for the full
+gate and the measured Qwen4-class candidate ledger.
+
 ## Do not bother—unless evidence changes the premise
 
 - **CPU core pinning, P-core affinity, or OpenMP thread tuning** for a workload
@@ -173,6 +189,8 @@ tokens per cycle, and draft/verify/rollback time. For APC, retain
   the dependable path.
 - **A megakernel before proving launch gaps are material.** It is a specialized
   runtime and correctness burden.
+- **Tiny-operator ANE offload or GPU-batch splitting to create work.** Dispatch,
+  handoff, and lost weight sharing are usually larger than the stage removed.
 - **Combining individually fast levers without a composition matrix.** Shared
   cache state is where silent fallbacks and rollback bugs hide.
 - **One blended tokens/s number.** It cannot tell TTFT from decode or queueing.
@@ -185,6 +203,7 @@ Stop and investigate instead of accepting a speed number when:
 - the accelerator smoke test falls into the slow cluster;
 - the thermal-settle ceiling fires;
 - a trace exports no usable rows;
+- a claimed ANE arm places material operations on CPU or GPU;
 - greedy tokens or the predeclared fidelity gate fail;
 - a cache hit cannot prove how many tokens were restored;
 - a recurrent rollback restores KV but not recurrent state;
@@ -192,4 +211,5 @@ Stop and investigate instead of accepting a speed number when:
 - a win disappears on the production-config multi-turn or loaded-service test.
 
 The longer explanations live in [The hardware model](hardware.md),
-[Measuring it right](measurement.md), and the [Glossary](glossary.md).
+[Heterogeneous GPU + ANE inference](heterogeneous-inference.md), [Measuring it
+right](measurement.md), and the [Glossary](glossary.md).

@@ -36,6 +36,7 @@ Full detail, prior-art attribution, and caveats are in the chapters.
 - **Runtime & OS knobs** — wired-memory limits, KV sizing, and the knobs that do nothing.
 - **Quantization** — weight and KV quant that helps, and the "fewer bits ≠ faster" trap.
 - **Speculative decoding & MTP** — when speculation pays, when it hurts, the single-user roofline.
+- **Heterogeneous GPU + ANE inference** — using the separate Apple Neural Engine beside a saturated GPU, including the successful overlap proof and the schedules that still lose.
 - **Serving-level techniques** — prefix caching, compiled decode replay, megakernels.
 - **Measuring it right** — decode-vs-TTFT, thermal settling, GPU tracing, A/B discipline.
 

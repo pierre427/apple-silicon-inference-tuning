@@ -113,6 +113,7 @@ count.
 | [Runtime & OS knobs](runtime-knobs.md) | Wired-memory limits, KV sizing, double-buffering, and the knobs that do nothing. |
 | [Quantization](quantization.md) | Weight and KV quantization that helps, and the "fewer bits ≠ faster" trap. |
 | [Speculative decoding & MTP](speculative-decoding.md) | When speculation pays, when it hurts, and the single-user roofline. |
+| [Heterogeneous GPU + ANE inference](heterogeneous-inference.md) | When the separate Apple Neural Engine can overlap a saturated GPU—and why ready work, compact handoffs, and batch preservation determine whether it helps. |
 | [Serving-level techniques](serving-techniques.md) | Prefix caching, compiled decode replay, and megakernels. |
 | [Measuring it right](measurement.md) | Decode-vs-TTFT, thermal settling, GPU tracing, and A/B discipline. |
 | [Glossary](glossary.md) | Precise definitions of the terms that carry the performance argument. |

@@ -145,6 +145,16 @@ See [The M5 Neural
 Accelerators](hardware.md#the-m5-neural-accelerators-a-prefill-lever-mostly)
 and [Prove the accelerators are live](environment.md#prove-the-accelerators-are-live).
 
+## Apple Neural Engine (ANE)
+
+The separate machine-learning accelerator on Apple SoCs, exposed to application
+workloads through Core ML and lower-level system interfaces. It is not one of
+the M5 GPU's per-core Neural Accelerators: ANE can execute concurrently with a
+Metal target, while NA/NAX work shares the GPU's resource budget. The practical
+limits are static graph support, placement, submission cost, state residency,
+and the size and dtype of every GPU/ANE handoff. See [Heterogeneous GPU + ANE
+inference](heterogeneous-inference.md).
+
 ## Paged KV / PagedAttention
 
 A memory-management design that stores KV cache in non-contiguous blocks and
@@ -247,4 +257,3 @@ limit](runtime-knobs.md#raise-the-wired-memory-limit).
   Decoding* — ICML 2023, arXiv:2211.17192.
 - Kwon et al., *Efficient Memory Management for Large Language Model Serving
   with PagedAttention* — SOSP 2023, arXiv:2309.06180.
-
