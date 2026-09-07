@@ -63,3 +63,7 @@ measurements; it is not affiliated with or endorsed by Apple or any model
 vendor. Measurements were taken primarily on an M5-generation Max part
 (macOS 26); numbers scale with the specific part's memory bandwidth and GPU
 core count.*
+
+## License
+
+MIT — see [LICENSE](LICENSE).
