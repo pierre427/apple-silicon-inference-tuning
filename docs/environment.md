@@ -23,6 +23,41 @@ The Neural-Accelerator kernels are gated on **both** of:
 Miss either one and you get correct results at M4-class prefill speed. There is
 no warning; the kernels simply aren't in the binary or aren't dispatched.
 
+### Build a reproducible serving environment
+
+Treat the interpreter, packages, and OS as one benchmark input. A minimal setup
+looks like this:
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install "mlx>=0.30" mlx-lm
+
+python - <<'PY'
+import platform
+import sys
+import mlx.core as mx
+
+print("python_executable=", sys.executable)
+print("python_version=", platform.python_version())
+print("macos_version=", platform.mac_ver()[0])
+print("mlx_version=", mx.__version__)
+print("metal_available=", mx.metal.is_available())
+PY
+```
+
+Save that output beside each benchmark. It answers the first question after a
+regression: *did the code slow down, or did the environment change?* For a
+long-lived service, also save an exact package snapshot after qualification:
+
+```bash
+python -m pip freeze > requirements-qualified.txt
+```
+
+That file is a record, not an upgrade command. Rebuild a fresh environment from
+it and rerun the accelerator and correctness smoke tests before promoting it.
+
 !!! danger "Never serve from the system Python"
     The stock `/usr/bin/python3` on macOS resolves to an old PyPI MLX with no
     accelerator path. It runs your model correctly and quietly gives up the
@@ -72,6 +107,31 @@ one of the two gates isn't satisfied — fix that before anything else. (Print
     accelerators are live. Model-level numbers are contaminated by background
     machine contention (see [Measuring it right](measurement.md)); a
     single-kernel GEMM on an idle GPU is the clean signal.
+
+### Turn the microbenchmark into a fail-closed check
+
+Do not hard-code the handbook's lab throughput as your threshold: GPU size,
+thermals, and contention change the absolute number. Qualify one known-good
+environment on the target machine, store a conservative local floor, then make
+the check return nonzero below it:
+
+```python
+import argparse
+import sys
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--floor-tflops", type=float, required=True)
+args = parser.parse_args()
+
+observed = gemm_tflops()
+print(f"observed={observed:.1f} floor={args.floor_tflops:.1f} TFLOP/s")
+if observed < args.floor_tflops:
+    sys.exit("accelerator smoke test failed")
+```
+
+Choose the floor from repeated quiet-machine runs of the exact deployment
+environment. Keep enough margin for ordinary noise, but not enough to admit the
+non-accelerator cluster. This is a path-presence test, not a leaderboard.
 
 ## The source-build trap: losing NAX on a rebuild
 
@@ -155,6 +215,37 @@ after an upgrade. Two rules keep you honest:
     checks have to run on the actual device you serve from, not in CI on a
     headless box. More in [Measuring it right](measurement.md).
 
+### Upgrade as an A/B, not an in-place hope
+
+Keep the qualified environment intact and build the candidate beside it. Run
+the same sequence against both:
+
+1. print the environment manifest;
+2. run `na_check.py` on an otherwise idle GPU;
+3. run a small greedy correctness fixture;
+4. run one representative prefill/decode ladder; and
+5. only then move the serving entry point.
+
+If the candidate fails, the old environment remains runnable and the control is
+still available for attribution. An in-place upgrade destroys that control and
+turns every regression into archaeology.
+
+### When not to source-build
+
+Do not source-build merely because it feels more optimized. Prefer a qualified
+wheel when it contains the feature you need. A source build is justified for a
+specific unreleased fix, an instrumented diagnostic, or a kernel change you are
+actively validating. In each case, record the source revision and build flags;
+otherwise you cannot reproduce the binary that produced the number.
+
+!!! note "Transfer to llama.cpp and vLLM-on-Metal"
+    The exact version gates in this chapter are MLX-specific. The operational
+    rule is not: pin the executable and revision, print the compiled backend
+    capabilities, and run a backend-specific matrix or prompt-evaluation smoke
+    test. For `llama.cpp`, confirm the Metal backend and GPU-offload plan in the
+    startup log. For a vLLM-style Metal backend, assert the selected attention
+    and matrix kernels rather than inferring them from a successful request.
+
 ## Checklist
 
 - [ ] Serving interpreter is a dedicated venv, **not** system Python.
@@ -169,5 +260,7 @@ after an upgrade. Two rules keep you honest:
 - Apple ML Research, *Exploring LLMs with MLX and the Neural Accelerators in
   the M5 GPU* — <https://machinelearning.apple.com/research/exploring-llms-mlx-m5>
 - MLX (`ml-explore/mlx`) release notes for the Metal tensor-op / M5 kernel
-  support.
-- mlx-lm README — memory-limit and serving notes.
+  support: <https://github.com/ml-explore/mlx/releases>
+- MLX build documentation: <https://ml-explore.github.io/mlx/build/html/dev/building_mlx.html>
+- mlx-lm README — memory-limit and serving notes:
+  <https://github.com/ml-explore/mlx-lm>

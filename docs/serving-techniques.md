@@ -48,6 +48,50 @@ carefully, it does:
     gate assert `cached_tokens > 0` on new-session, extension, **and** repeat —
     not just that output was produced.
 
+### Make the cache contract observable
+
+A prefix-cache key must bind every property that changes the meaning or layout
+of stored state, while avoiding values already determined by the token ids. A
+simple content-addressed key can start like this:
+
+```python
+import hashlib
+import json
+
+def prefix_key(*, model_revision, cache_format, position_config, token_ids):
+    payload = {
+        "model_revision": model_revision,
+        "cache_format": cache_format,          # dtype, layout, quant settings
+        "position_config": position_config,    # RoPE/scaling semantics
+        "token_ids": token_ids,
+    }
+    canonical = json.dumps(
+        payload, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+```
+
+Production caches usually hash blocks so they can choose the longest matching
+prefix, but the invariant is the same: equal keys imply cache-compatible model
+state. Do not include request ids, timestamps, raw embedding hashes, or other
+per-request salt; those destroy cross-request reuse without making the state
+safer.
+
+Every response should expose enough internal metrics to prove the mechanism:
+
+```text
+prompt_tokens       total tokenized prompt length
+cached_tokens       tokens restored rather than prefetched
+cache_match_kind    miss | repeat | extension | shared-prefix
+cache_format        layout/dtype compatibility version
+cache_publish       whether committed state was stored for a later turn
+```
+
+Test all four match kinds. For an extension, assert that the restored prefix
+ends at the expected token boundary and only the suffix is prefetched. For a
+miss, assert `cached_tokens == 0`; false hits are correctness bugs, while false
+misses are performance bugs.
+
 ### Classify the divergence honestly
 
 Warm-versus-cold greedy output can differ without any restore fault. Two benign
@@ -69,7 +113,11 @@ bit-exact), and only then against a fresh prefill — where seam-position
 near-ties are expected, not defects. The warm arm is the stable one across
 engine changes; when a digest moves, it is usually the cold arm that moved.
 
-> **Prior art.** Automatic prefix caching as popularized by vLLM and now common in serving stacks — reuse KV for shared prefixes.
+> **Prior art.** Kwon et al., *Efficient Memory Management for Large Language
+> Model Serving with PagedAttention* (SOSP 2023, arXiv:2309.06180), established
+> paged KV management for serving; vLLM's automatic prefix caching adds
+> content-addressed sharing of matching prefix blocks. Paging and prefix reuse
+> are related memory mechanisms, but they are not the same feature.
 > **How we differ.** We require exact warm-restore (token-identical) with verified zero cross-request leakage, and classify where exactness holds vs a salt/text-only caveat.
 > **Our finding.** *Extends prior art* — most APC implementations optimize hit-rate; we add a bit-exactness + leakage-safety classification.
 
@@ -108,6 +156,21 @@ def decode_step(token, keys, values, offset):
     logits, keys, values = _forward(token, keys, values, offset)
     return logits, keys, values, offset + 1   # thread state as return values
 ```
+
+In real code, treat `(model revision, dtype, batch, cache-capacity bucket)` as
+the trace identity. Warm each intended bucket, count trace creation, and fail a
+benchmark that retraces inside the measured region. Choose the smallest bucket
+that safely holds the request rather than one maximum slab for every context.
+
+**How to apply.** First make the eager step a pure state transition, then add a
+fixed cache, then compile. Compare each intermediate arm; otherwise a regression
+from padding can be mistaken for a compiler regression. Return mutated arrays
+from the compiled function and commit them only after successful evaluation.
+
+**When not to.** Skip replay for highly dynamic shapes, wide speculative verify,
+or contexts where the padded attention cost already exceeds saved host work.
+Do not put Python-side sampling, logging, or request objects inside the compiled
+step merely to enlarge the captured region.
 
 !!! danger "A fast-math kernel can make replay numerically diverge"
     Early replay diverged from stock decode. The cause was *not* the replay
@@ -183,6 +246,20 @@ Neither lever was wrong alone. The bug lived entirely in their composition — a
 only a test that ran prompt-lookup *on a cache hit* could find it. When you stack
 serving levers, test the cross-product of their states, not each lever in
 isolation.
+
+A small composition matrix catches most state bugs before a load test:
+
+| dimension | values to cover |
+|---|---|
+| prefix state | cold, repeat hit, extension hit, shared-prefix hit |
+| decode lane | plain, compiled, speculative / prompt-lookup |
+| cache representation | ordinary, rotating, quantized where supported |
+| outcome | full accept, early reject, trim/rollback, cancellation |
+
+You do not need every Cartesian-product case for every release. You do need
+pairwise coverage of any two mechanisms that read or mutate the same cache, plus
+one production-config multi-turn scenario. Instrument mechanism counters so a
+green test cannot be a silent fallback to plain decode.
 
 > **Prior art.** None directly.
 > **How we differ.** We composed a short-warmup prompt-lookup decoder with an APC hit, where the cache-hit mis-latched the warm-up path off.
@@ -278,6 +355,17 @@ speed unchanged and the published state CPU-byte-lossless. The win is
 orchestration *between* forwards (skipped prefill on the next turn), not anything
 inside the GPU-bound forward.
 
+**How to apply.** Prove launch-bound behavior with an encoder-interval trace,
+prototype one complete token path, and gate device completion before reading
+output. Measure the actual persistent binary's empty or minimal-work dispatch
+floor. Qualify both arithmetic fidelity and full-model behavior on natural
+text, then test cancellation and rollback as first-class paths.
+
+**When not to.** Do not start with a megakernel when encoder gaps are already a
+small share of the step, when the model changes frequently, or when the team
+cannot maintain a device-side scheduler and its correctness suite. It is a
+specialized runtime lane, not a general flag.
+
 > **Prior art.** None directly.
 > **How we differ.** We publish prefix state back from the megakernel lane into the prefix cache.
 > **Our finding.** *Extends prior art* — cut a measured multi-turn time ~33.5s→14.0s with decode unchanged; the win is orchestration between forwards.
@@ -336,11 +424,32 @@ transfer: an admission controller with only a memory ceiling admitted 2.5x past
 the throughput knee on a small model, because free RAM scales with model size
 while GPU compute saturation is fixed — cap by **both**.
 
+A practical admission controller therefore needs two ceilings:
+
+```text
+admit only if
+    projected_resident_bytes <= memory_budget
+and projected_batch_width     <= measured_throughput_knee
+```
+
+Derive the width ceiling from a context-matched sweep, not from free memory.
+Track queue delay separately from model time: batching can improve aggregate
+throughput while making one interactive user's latency worse.
+
 The single-user floor, once speculation and an async-dispatch overlap are in
 place, is the GPU roofline itself: on the recurrent family the remaining
 per-round host idle was ~3ms (~8%), mostly already hidden, and idle CPU there is
 the *signature* of a GPU-bound roofline, not spare capacity to reclaim. Know
 which regime you are in before you reach for a lever built for the other.
+
+!!! note "Transfer to llama.cpp and vLLM-on-Metal"
+    APC keys, cache ownership, publish-back, and composition gates are portable
+    service concerns. vLLM's paged blocks make sharing and eviction explicit;
+    `llama.cpp` may expose a different session/cache interface, but a warm hit
+    still needs compatibility metadata and token-level validation. Compiled
+    replay maps to graph capture where the backend supports it. Megakernels map
+    only when the Metal backend can own a whole persistent schedule; ordinary
+    operator fusion is not automatically equivalent.
 
 ---
 
@@ -355,6 +464,10 @@ Public, upstream concepts this chapter builds on:
 - **Prefix caching** — general automatic-prefix-cache / content-addressed KV
   reuse as described in the vLLM and SGLang literature, and the KV-leakage
   analyses that exempt content-addressed caches.
+- Kwon et al., *Efficient Memory Management for Large Language Model Serving
+  with PagedAttention* — SOSP 2023, arXiv:2309.06180.
+- vLLM documentation — automatic prefix caching and paged KV management:
+  <https://docs.vllm.ai/>
 - **Persistent / megakernels** — the "one kernel per token" pattern from the
   persistent-kernel literature (e.g. Mirage-style persistent kernels and
   monokernel decode work on other accelerators), here retargeted to Metal via

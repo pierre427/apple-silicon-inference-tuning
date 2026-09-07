@@ -50,6 +50,11 @@ nothing, and knowing that saves you a weekend:
 - **CPU core-pinning / OMP thread tuning / fixed-clock cooldowns** showed no
   benefit on a GPU-bound workload. See [Runtime & OS knobs](runtime-knobs.md).
 
+If you are diagnosing a machine rather than reading front to back, use the
+[Quick reference / cheat sheet](cheatsheet.md). It turns this ranking into a
+short decision tree and keeps the commands in one place. The
+[Glossary](glossary.md) defines the terms used as gates in that tree.
+
 ## The one thing most people get wrong
 
 Levers 1–8 assume you already know **which phase you're bound by**. Prefill is
@@ -58,6 +63,28 @@ memory-bandwidth-bound and barely feels them (~1.2×). Long prompts → chase
 prefill; long generations → chase bandwidth and dispatch overhead. Almost every
 "why didn't that speed up?" surprise on Apple silicon is a lever applied to the
 wrong phase. Start with [The hardware model](hardware.md).
+
+### A five-minute first pass
+
+Before changing a flag, capture four values from one representative request:
+
+1. prompt tokens;
+2. time to first token (TTFT);
+3. output tokens; and
+4. steady-state time per output token, excluding prefill.
+
+Then repeat with a longer prompt and again with a longer generation. If only
+TTFT grows, work the prefill column of the table. If per-token decode time grows
+with context, budget KV traffic and memory. If decode is slow even at short
+context while GPU intervals contain gaps, investigate dispatch. This small
+context/output ladder prevents the common mistake of optimizing a blended
+request-time number whose bottleneck you cannot name.
+
+!!! tip "Apply one lever at a time"
+    Record the baseline, assert that the intended code path ran, change one
+    lever, and rerun the same workload. Only after a lever passes independently
+    should you test it in combination. Prefix caching, speculation, and compiled
+    replay all alter state ownership; their interactions deserve their own gate.
 
 ## Who this is for
 
@@ -88,6 +115,8 @@ count.
 | [Speculative decoding & MTP](speculative-decoding.md) | When speculation pays, when it hurts, and the single-user roofline. |
 | [Serving-level techniques](serving-techniques.md) | Prefix caching, compiled decode replay, and megakernels. |
 | [Measuring it right](measurement.md) | Decode-vs-TTFT, thermal settling, GPU tracing, and A/B discipline. |
+| [Glossary](glossary.md) | Precise definitions of the terms that carry the performance argument. |
+| [Quick reference / cheat sheet](cheatsheet.md) | Ranked levers, diagnostic questions, commands, and the don't-bother list. |
 
 ---
 

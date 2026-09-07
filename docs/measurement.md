@@ -59,6 +59,7 @@ this handbook recommends over any single blended figure.
 # Illustrative only. Recover TTFT and steady-state decode t/s from many calls.
 # Each call generates a different number of output tokens against a FIXED prompt.
 import numpy as np
+import time
 
 samples = []  # collect (output_tokens, wall_seconds) across many calls
 for max_tokens in [16, 32, 64, 128, 256, 512]:
@@ -85,9 +86,35 @@ A few practical notes:
   meaningless.
 - Report the fit quality (residuals / R²). A poor fit means something else is
   moving — thermal drift, contention, a cache effect — and the two recovered
-  numbers should not be trusted until you find it.
+    numbers should not be trusted until you find it.
 - The numbers here are illustrative. Do not attribute specific provider figures
   to this method; use it to measure *your* build on *your* machine.
+
+### Also report time per output token
+
+Throughput and latency are reciprocals only after units and scope agree:
+
+```
+time_per_output_token_seconds = decode_seconds / decoded_tokens
+decode_tokens_per_second      = 1 / time_per_output_token_seconds
+```
+
+Exclude the first emitted token from the decode numerator if TTFT already owns
+that interval, and state whether end-of-sequence or stop-sequence tokens are
+counted. For a streaming API, retain every token timestamp so you can inspect
+the distribution of inter-token gaps rather than only the mean. A scheduler can
+preserve average tokens/s while introducing visible pauses.
+
+Use a two-dimensional workload grid to keep phase effects visible:
+
+| prompt length | output length | primary question |
+|---|---|---|
+| short | short | fixed overhead and launch floor |
+| long | short | prefill / TTFT and cache reuse |
+| short | long | steady decode and thermal drift |
+| long | long | KV growth, bandwidth, and stability |
+
+Do not compare systems on one cell and generalize to the other three.
 
 > **Prior art.** The standard serving-benchmark distinction between prefill/TTFT and per-token decode latency.
 > **How we differ.** We regress duration on output tokens across many real calls to recover both from noisy end-to-end logs.
@@ -233,6 +260,42 @@ many-prompt evals — should be batched; see the A/B discipline below.)
     commit, or gate each phase on an import smoke check, so a failure is
     attributed correctly instead of being read as an instrument problem.
 
+### Write a run manifest before the first token
+
+A result without its environment is not reproducible. Emit a small JSON record
+before loading the model, then append measured outputs rather than overwriting
+it:
+
+```python
+import json
+import platform
+import subprocess
+import sys
+import time
+import mlx.core as mx
+
+manifest = {
+    "started_unix_s": time.time(),
+    "python": sys.version,
+    "python_executable": sys.executable,
+    "macos": platform.mac_ver()[0],
+    "mlx": mx.__version__,
+    "model_revision": MODEL_REVISION,
+    "quantization": QUANTIZATION_CONFIG,
+    "prompt_set_digest": PROMPT_SET_DIGEST,
+    "generation": GENERATION_CONFIG,
+    "source_revision": subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], text=True
+    ).strip(),
+}
+print(json.dumps(manifest, sort_keys=True))
+```
+
+Include cache mode, batch/concurrency, exact sampler settings, and whether each
+mechanism under test reported that it ran. Avoid recording prompt contents when
+they may be sensitive; a stable digest plus a separately governed corpus is
+enough to reproduce membership.
+
 > **Prior art.** General benchmarking hygiene ("quiet the machine").
 > **How we differ.** We confirm it by reproducing on a known-good control — identical degradation on both arms fingers the host, not the change.
 > **Our finding.** *Consistent with prior art* — sharpened: model-level runs looked 3-4x degraded from ambient contention, and microbenches are contention-resistant, so quote model-level numbers only from a quiet machine.
@@ -364,6 +427,53 @@ validate nothing forever. After regenerating any baseline, **assert the tracked
 count is nonzero** and matches what you expect. A fail-closed guard that
 silently tracks nothing is worse than no guard.
 
+### A small paired harness
+
+Interleave arms so slow machine drift does not line up with one configuration.
+Randomize the order within each block, discard a warmup for each newly loaded
+arm, and retain raw observations:
+
+```python
+import random
+import statistics
+
+rng = random.Random(EXPERIMENT_SEED)
+rows = []
+
+for block in range(NUM_BLOCKS):
+    arms = ["control", "candidate"]
+    rng.shuffle(arms)
+    for arm in arms:
+        result = run_arm(arm, workload=FIXED_WORKLOAD)
+        if result["mechanism_calls"] == 0 and arm == "candidate":
+            raise RuntimeError("candidate mechanism did not run")
+        rows.append({"block": block, "arm": arm, **result})
+
+by_block = {}
+for row in rows:
+    by_block.setdefault(row["block"], {})[row["arm"]] = row["tpot_ms"]
+
+paired_ratios = [
+    values["control"] / values["candidate"]
+    for values in by_block.values()
+]
+print("median_speedup=", statistics.median(paired_ratios))
+```
+
+The ratio above is control TPOT divided by candidate TPOT, so values above one
+favor the candidate. Report the paired observations or an interval, not only
+the median. If the mechanism counter, output gate, or settle gate fails, retain
+the row as diagnostic evidence but exclude it from the performance verdict
+under a rule written before the run.
+
+### Decide before looking
+
+Write down the primary metric, minimum worthwhile effect, exactness class,
+sample count or stopping rule, and invalid-run conditions before collecting the
+candidate results. This avoids moving the gate after seeing a noisy win. Use a
+held-out prompt pack for the final decision when the change was tuned on a
+calibration pack.
+
 > **Prior art.** General experimental rigor / ablation methodology.
 > **How we differ.** We codified Apple-silicon failure modes into fail-closed harness guards.
 > **Our finding.** *Extends prior art* — catching an A/B whose arms are secretly identical, and validating on real Metal because CPU can't reproduce GPU correctness bugs.
@@ -383,6 +493,14 @@ The implication for measurement: a green result from a machine without a Metal
 GPU means "ready to test," never "done." GPU correctness must be verified **on
 device**.
 
+!!! note "Transfer to llama.cpp and vLLM-on-Metal"
+    TTFT, time per output token, paired A/Bs, quiet-machine controls, and
+    context/output grids do not depend on MLX. Replace the mechanism counters
+    with backend-specific evidence: Metal-offloaded layer counts for
+    `llama.cpp`, or scheduler, batch, cache-block, and kernel-path counters for a
+    vLLM-style server. Keep queue time separate from model time when comparing a
+    single-user runtime with a continuously batched service.
+
 ---
 
 ## Sources
@@ -398,3 +516,7 @@ Public tools and APIs referenced in this chapter:
   (standard macOS; `powermetrics` requires root).
 - Apple ML Research, *Exploring LLMs with MLX and the Neural Accelerators in the
   M5 GPU* — for the prefill-vs-decode speedup figures cited above.
+- MLX documentation — evaluation semantics, compilation, and Metal tooling:
+  <https://ml-explore.github.io/mlx/build/html/index.html>
+- MLX-LM — reference generation and serving code used to define comparable
+  prompt and decode phases: <https://github.com/ml-explore/mlx-lm>

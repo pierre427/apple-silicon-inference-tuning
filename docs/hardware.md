@@ -160,6 +160,71 @@ When you're about to tune something, ask three questions in order:
 
 Everything downstream in this guide is an application of these three questions.
 
+## A worked roofline check
+
+You do not need a full profiler to make a useful first classification. For a
+single-stream decode, estimate the minimum weight traffic per step, then compare
+it with elapsed time. The calculation is deliberately a *bound*, not a claim
+that every runtime reads every byte exactly once:
+
+```python
+def decode_bandwidth_gib_s(active_weight_gib, tokens_per_second,
+                           kv_gib_per_token=0.0):
+    """Illustrative lower-bound traffic estimate for one decode stream."""
+    bytes_per_step_gib = active_weight_gib + kv_gib_per_token
+    return bytes_per_step_gib * tokens_per_second
+
+# Fill these from the model metadata and your measurement.
+print(decode_bandwidth_gib_s(
+    active_weight_gib=ACTIVE_WEIGHT_GIB,
+    tokens_per_second=MEASURED_DECODE_TPS,
+    kv_gib_per_token=ESTIMATED_KV_TRAFFIC_GIB,
+))
+```
+
+For a dense model, `active_weight_gib` is approximately the quantized weight
+footprint. For an MoE, use the weights actually selected per token plus the
+always-active layers, not total parameters. Compare the result with a measured
+memory-bandwidth baseline from the same machine, not a marketing peak. A high
+fraction points toward a bandwidth lever. A low fraction does **not** prove
+compute-bound: at width one it often means launch gaps, synchronization, or
+poor kernel occupancy, which requires a trace to separate.
+
+For prefill, reverse the question. Run a fixed prompt-length ladder and report
+prompt tokens divided by prefill time. If throughput rises with prompt length
+before flattening, the small cases were not filling the matrix path. If large
+cases remain unexpectedly slow, run the GEMM smoke test in
+[Environment & build](environment.md) before touching model code.
+
+### How to apply the model
+
+- **Interactive chat with a long system prompt:** measure TTFT first; verify the
+  accelerator path, then look for exact prefix reuse.
+- **Short prompt with a long completion:** measure steady decode; try weight
+  quantization and dispatch reduction, not a prefill-only kernel.
+- **Long-context agent with short replies:** split prefill from decode and track
+  KV bytes. Prefix caching may remove repeated prefill, while cache sizing may
+  prevent a later memory cliff.
+- **Many concurrent requests:** measure the scheduler at the intended batch and
+  context mix. Batch width can turn launch slack into useful work, but it also
+  increases KV residency and changes the compute knee.
+
+### When not to use a roofline estimate
+
+Do not use the estimate as a substitute for profiling when sampling, tool calls,
+tokenization, network time, or queueing dominate wall time. It describes the
+model forward path. It also cannot identify a correctness regression: a faster
+kernel that changes the accepted exactness class still fails the gate.
+
+!!! note "Transfer to llama.cpp and vLLM-on-Metal"
+    The names of the counters and cache objects differ, but the classification
+    survives intact. In `llama.cpp`, separate prompt evaluation from token
+    generation and inspect Metal-offload timing. In a Metal backend for a
+    vLLM-style server, separate scheduler/queue time, prefill, and decode, then
+    compare active KV blocks and batch width. Unified memory removes an explicit
+    host-to-device copy; it does not remove bandwidth, launch, or residency
+    limits.
+
 ## Sources
 
 - Apple ML Research, *Exploring LLMs with MLX and the Neural Accelerators in
@@ -169,3 +234,7 @@ Everything downstream in this guide is an application of these three questions.
 - Reverse-engineering of the Metal tensor compute path on Apple GPUs —
   arXiv:2606.12765
 - *Production-Grade Local LLM Inference on Apple Silicon* — arXiv:2511.05502
+- MLX documentation — lazy evaluation, Metal execution, compilation, and
+  performance guidance: <https://ml-explore.github.io/mlx/build/html/index.html>
+- MLX-LM — reference generation, cache, quantization, and serving
+  implementations: <https://github.com/ml-explore/mlx-lm>

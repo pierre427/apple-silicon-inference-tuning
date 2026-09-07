@@ -48,7 +48,10 @@ model and it is a **hardware knee, not an exactness or memory-layout artifact**:
     head** trained to predict k tokens in-distribution — a training change, not
     a serving one.
 
-> **Prior art.** Standard speculative-decoding theory (Leviathan et al.-style acceptance model).
+> **Prior art.** Leviathan et al., *Fast Inference from Transformers via
+> Speculative Decoding* (ICML 2023, arXiv:2211.17192), and Chen et al.,
+> *Accelerating Large Language Model Decoding with Speculative Sampling*
+> (arXiv:2302.01318), establish exact sampling through draft-and-verify.
 > **How we differ.** Measured the roofline to its floor on M5-class hardware.
 > **Our finding.** *Consistent with prior art* — single-user speculation tops out near linear; batching is the orthogonal multi-user axis.
 
@@ -60,6 +63,42 @@ so the loss in an EAGLE-style prototype there was ~6 ms/cycle of *engine*
 overhead (draft-head forward, `lm_head`, logsumexp, per-draft syncs), not
 physics. Attribute the cost to the right place or you will optimize the wrong
 thing.
+
+### Work the break-even point from timings
+
+Acceptance rate alone does not tell you whether speculation wins. Measure the
+cost of a plain target step, drafting, batched verification, and bookkeeping,
+then divide the speculative cycle by the number of tokens it actually commits:
+
+```python
+def speculative_speedup(*, plain_step_ms, draft_ms, verify_ms,
+                        overhead_ms, committed_tokens):
+    if committed_tokens <= 0:
+        raise ValueError("committed_tokens must be positive")
+    spec_ms_per_token = (
+        draft_ms + verify_ms + overhead_ms
+    ) / committed_tokens
+    return plain_step_ms / spec_ms_per_token
+
+print(speculative_speedup(
+    plain_step_ms=PLAIN_STEP_MS,
+    draft_ms=DRAFT_MS,
+    verify_ms=VERIFY_MS,
+    overhead_ms=ROLLBACK_AND_SAMPLING_MS,
+    committed_tokens=MEAN_COMMITTED_PER_ROUND,
+))
+```
+
+Populate the inputs from distributions over complete rounds, not one lucky
+prompt. `committed_tokens` includes only tokens made durable after rejection
+sampling. Report its distribution alongside accept rate: two drafts can have
+the same fraction accepted but different committed tokens per cycle because
+their widths and rejection positions differ.
+
+Use the result as a pre-gate. If the measured cycle is below break-even before
+cache copies, sampling, and scheduling are fully included, the integrated
+server will not rescue it. If it clears the gate, run the end-to-end benchmark
+with exactness and state-rollback checks.
 
 ---
 
@@ -91,6 +130,18 @@ Two things to take from this:
 Operational note: `--mtp` sets `is_batchable=False`, so turning it on disables
 continuous batching for that path — there is no dynamic switching between the
 two. You are choosing self-spec **or** batching, not both, on that route.
+
+**How to apply.** Start with deterministic greedy decoding and a fixed prompt
+pack. Log proposed width, accepted prefix length, committed tokens, draft time,
+verify time, and rollback count per round. Only after token identity matches
+plain decode should you test sampling. Segment results by content type; a pooled
+acceptance average can hide a route that loses badly on prose.
+
+**When not to.** Do not enable MTP globally when the route already relies on
+continuous batching, when the model's native head is absent, or when the model
+has recurrent state you cannot checkpoint and replay. A feature flag that
+silently changes scheduler behavior must be qualified as a service policy, not
+just a decoder option.
 
 The exception that ships is a **single-hidden corpus MTP head on a hybrid
 model** (not pure MoE): 1.40× (strict k2) to 1.77× (relaxed k4) on the
@@ -226,6 +277,27 @@ smoothly. Do not port one model's cliff-aware span band into another model's
 defaults — measure the whole verify curve per target and only enable
 cliff-aware routing when that target shows a penalty band.
 
+### A safe adaptive policy
+
+PLD can be routed from observable workload evidence without guessing the user's
+intent. Enable a trial window only when the prompt contains repeated spans long
+enough to draft from, then keep it on while committed tokens per cycle beat the
+plain baseline:
+
+```text
+if prompt_has_reusable_ngrams:
+    run_one_warmed_pld_cycle()
+    while committed_tokens / cycle_time > plain_tokens_per_second:
+        run_pld_cycle()
+else:
+    run_plain_decode()
+```
+
+Arm the rate window after the first warmed cycle, especially on a prefix-cache
+hit. Use hysteresis before switching modes so one rejection does not make the
+decoder thrash. The controller must preserve the exact sampler and cache state
+across the switch; speed policy is not permission to change output semantics.
+
 ---
 
 ## The "spec decays with output length" myth
@@ -315,6 +387,15 @@ in training-time head changes — not in a cleverer serving loop.
   accept rate with every speedup, and measure on your own traffic before
   trusting a vendor multiplier.
 
+!!! note "Transfer to llama.cpp and vLLM-on-Metal"
+    Draft-and-verify arithmetic is backend-independent. In `llama.cpp`, measure
+    the draft and target models' *active bytes* and the cost of moving between
+    their contexts. In a vLLM-style Metal server, compare speculation with
+    continuous batching at the same offered load; an idle single-stream win can
+    disappear once the scheduler already supplies width. PLD needs only token
+    history and a verifier, so it transfers most directly, but it remains a
+    copy-workload lever rather than a general decoder default.
+
 See also: [the hardware model](hardware.md) for the bandwidth/dispatch roofline
 that sets the decode ceiling, [measurement](measurement.md) for the benchmark
 hygiene these numbers depend on, and [serving techniques](serving-techniques.md)
@@ -326,6 +407,13 @@ single-user speculation.
 ## Sources
 
 Public references, as cited in the primary M5-serving audit:
+
+- Leviathan et al., *Fast Inference from Transformers via Speculative
+  Decoding* — ICML 2023, arXiv:2211.17192.
+- Chen et al., *Accelerating Large Language Model Decoding with Speculative
+  Sampling* — arXiv:2302.01318.
+- vLLM documentation — speculative decoding and serving-level scheduler
+  interactions: <https://docs.vllm.ai/>
 
 - mlx-lm **PR #990** — native MTP self-spec (`--mtp`), Qwen3.5/3.6, no draft
   model.

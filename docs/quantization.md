@@ -62,6 +62,28 @@ memory budget**, and treat any speed change as something to measure, not
 assume. The DWQ result below is a clean example — a strictly better-quality
 4-bit model at *identical* decode speed.
 
+### Run a four-arm experiment, not a bit-width race
+
+For each candidate, keep model revision, prompt set, cache policy, sampling,
+batch, and output lengths fixed. Compare at least:
+
+| arm | question it answers |
+|---|---|
+| full precision | What quality and numerics are we trying to preserve? |
+| current shipped quant | What is the real operational baseline? |
+| candidate at equal bit width | Did the method improve quality without buying more bytes? |
+| candidate at equal memory budget | Is it the best use of the memory the service can afford? |
+
+Record weight bytes, peak active memory, prefill rate, decode rate, and a
+teacher-forced fidelity metric. A smaller file that decodes slower is not a
+speed win; a faster model that crosses the application's quality gate is not a
+deployable win.
+
+**When not to quantize further.** Stop lowering the bit width when the model
+already fits with the required concurrency and the next format fails quality or
+slows the target phase. Quantization is a means to fit and move fewer bytes,
+not a score to minimize.
+
 > **Prior art.** arXiv:2508.08531 — dequant overhead can dominate the bandwidth
 > a lower-bpw format saves.
 > **How we differ.** Reproduction of the principle.
@@ -71,6 +93,27 @@ assume. The DWQ result below is a clean example — a strictly better-quality
 ---
 
 ## Weight quantization
+
+### Establish a plain RTN baseline first
+
+Before testing learned or mixed schemes, create a standard affine quant at the
+same group size. That control separates a better calibration method from simply
+spending more scale metadata:
+
+```bash
+# Check flag names against the installed mlx-lm release.
+python -m mlx_lm.convert \
+    --hf-path <source-model> \
+    --mlx-path <rtn-output> \
+    --quantize \
+    --q-bits 4 \
+    --q-group-size 32
+```
+
+Load the saved artifact in a fresh process before benchmarking it. Testing only
+the in-memory converted object misses serialization metadata and reload-path
+defects. Store the source revision, conversion command, and tokenizer files with
+the result.
 
 ### DWQ (Distilled Weight Quant)
 
@@ -174,6 +217,39 @@ reference perplexity or KL divergence against the fp16/bf16 outputs on held-out
 text. That measures the thing you actually care about — how close the quantized
 model stays to the original — rather than a proxy that can move the other way.
 
+Here is a compact MLX-oriented KL probe. It compares next-token distributions
+on identical teacher-forced input; wrap it in a corpus loop and report a
+document-level interval rather than treating one string as a gate:
+
+```python
+import mlx.core as mx
+from mlx_lm import load
+
+teacher, tokenizer = load("<teacher>")
+student, _ = load("<quantized-candidate>")
+
+ids = tokenizer.encode("<held-out evaluation text>")
+x = mx.array(ids)[None, :]
+
+teacher_logits = teacher(x)[:, :-1].astype(mx.float32)
+student_logits = student(x)[:, :-1].astype(mx.float32)
+
+teacher_logp = teacher_logits - mx.logsumexp(
+    teacher_logits, axis=-1, keepdims=True
+)
+student_logp = student_logits - mx.logsumexp(
+    student_logits, axis=-1, keepdims=True
+)
+teacher_p = mx.exp(teacher_logp)
+kl = mx.mean(mx.sum(teacher_p * (teacher_logp - student_logp), axis=-1))
+mx.eval(kl)
+print("mean_teacher_to_student_kl=", kl.item())
+```
+
+Use the same tokenizer and exact token sequence for both arms. Also compute
+task-facing quality: teacher agreement can detect fidelity loss, but it cannot
+tell you whether a divergence matters to the application.
+
 ---
 
 ## KV-cache quantization
@@ -199,6 +275,21 @@ badly negative.
     long-context throughput hit. For general short-output serving it is a net
     loss. Measure on *your* output-length and context distribution before
     enabling it.
+
+### A deployment gate for KV quantization
+
+Exercise the corners the service will actually see, not only a short prompt:
+
+1. cold and warm prefix-cache paths;
+2. minimum and maximum context;
+3. short and long output lengths;
+4. each supported batch/concurrency level; and
+5. rollback or trimming, if speculation can reject tokens.
+
+For greedy decoding, compare token streams against the unquantized-cache arm.
+For sampled decoding, replay fixed random draws or compare logits before the
+sampler so randomness does not hide a cache defect. Record cache bytes and
+served latency together; otherwise the result cannot express the trade.
 
 > **Prior art.** `mlx-lm` KV-quant support and the general KV-quant literature,
 > commonly presented as a near-free memory win.
@@ -269,6 +360,14 @@ combination; you pick one.
 - **Rank formats on teacher-forced fidelity** to the full-precision model, not
   on a single downstream score or on a reconstruction-error proxy.
 
+!!! note "Transfer to llama.cpp and vLLM-on-Metal"
+    The format names differ, but the experiment does not. `llama.cpp` readers
+    should compare quant families at equal resident bytes and include their
+    dequant kernel in timing. A vLLM-style Metal backend should report weight
+    format separately from KV-cache dtype and paged-cache capacity. Never fold
+    the two kinds of quantization into one label: they save different bytes and
+    can move latency in opposite directions.
+
 ---
 
 ## Sources
@@ -277,7 +376,8 @@ Public primary references for the material in this chapter:
 
 - MLX `mlx-lm` documentation — `LEARNED_QUANTS.md` (DWQ and `dynamic_quant`
   behavior, bit-width guidance, group size, teacher options) and the `mlx-lm`
-  README (KV-cache memory limits, `--max-kv-size`, `iogpu.wired_limit_mb`).
+  README (KV-cache memory limits, `--max-kv-size`, `iogpu.wired_limit_mb`):
+  <https://github.com/ml-explore/mlx-lm>
 - Benazir & Lin, *Profiling LLM Inference on Apple Silicon: A Quantization
   Perspective* — arXiv:2508.08531.
 - Apple ML Research, *Exploring LLMs with MLX and the Neural Accelerators in the
