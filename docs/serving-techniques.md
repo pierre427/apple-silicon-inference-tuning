@@ -1,0 +1,365 @@
+# Serving-level techniques
+
+Most tuning advice targets the model: the quantization format, the kernel, the
+attention variant. But a large share of end-to-end latency lives in the *serving
+loop* — the code that owns the KV cache across turns, decides what to recompute,
+and dispatches work to the GPU. This chapter covers four levers that live there:
+**prefix caching**, **compiled decode replay**, **megakernels**, and the way
+**batching versus single-user** service changes which of them is worth adopting.
+
+The recurring lesson: a serving lever is only as good as the correctness gate
+that qualifies it, and levers that each win alone can lose — or silently
+misbehave — when composed. Numbers below come from a lab serving stack on an
+Apple M5 Max (40-core GPU, 128 GB unified memory); see
+[the hardware model](hardware.md) for why decode is bandwidth-bound and prefill
+is compute-bound on this class of machine, and [measurement](measurement.md) for
+the gating discipline these results depend on.
+
+---
+
+## Prefix caching (APC)
+
+Automatic prefix caching (APC) reuses the attention KV state of a shared prompt
+prefix across requests, so a multi-turn conversation or a repeated system prompt
+does not re-run prefill from scratch. On Apple Silicon, where prefill is the
+compute-bound half of the workload, a cache hit is one of the largest
+whole-conversation wins available.
+
+The correctness question is whether a *warm restore* — decoding from the cached
+state — produces the same tokens as a cold prefill of the same text. Measured
+carefully, it does:
+
+- **Warm restore is attended-state faithful.** In one probe the warm arm held
+  the top-1 token for 202 consecutive positions before forking at a sub-nat
+  near-tie, with no change to the typed output.
+- **Zero leakage from discarded branches.** When speculative rollback trims the
+  cache to the last accepted token and zeroes the ragged tail, KV state left in
+  the pool from a discarded branch is *byte-identical* to a clean warm run — not
+  "small drift," exactly zero. Content-addressed prefix caches that never
+  re-inject removed tokens are the class the KV-leakage literature explicitly
+  exempts.
+
+!!! warning "Exactness can be repeat-only — assert the cache hit, not the stream"
+    A subtle defect: one runtime folded a hash of the text embeddings into the
+    exact-APC cache key. Byte-identical *repeats* still hit, so a test that only
+    checked "warm turns still stream" passed — but a multi-turn *extension* or a
+    new session never hit at all, silently falling back to cold prefill. Never
+    salt an APC key on anything the token ids already determine, and make the
+    gate assert `cached_tokens > 0` on new-session, extension, **and** repeat —
+    not just that output was produced.
+
+### Classify the divergence honestly
+
+Warm-versus-cold greedy output can differ without any restore fault. Two benign
+causes dominate, and both must be ruled out before calling a divergence a bug:
+
+- **Kernel-shape numerics.** The fused attention kernel picks its Metal variant
+  and block count from the key-sequence length. A restored state that is one
+  chunk-width different from a fresh prefill (e.g. a 2047- vs 2048-wide final
+  chunk) reorders the softmax reduction and can flip a token at a near-tie —
+  even on a bit-identical cache. Forward *width* alone (decoding one token vs
+  verifying three) can flip a token on a completely fresh cache.
+- **Quantized logprobs.** Returned logprobs are often bf16-quantized, so an
+  absolute tolerance below ~0.125 nats at logit magnitude ~16 is unreachable by
+  construction. "1.375-nat drift" turned out to be six of ~1000 values, all at
+  ~1e-8 probability.
+
+The rule: compare warm restore against *its own store input* first (that must be
+bit-exact), and only then against a fresh prefill — where seam-position
+near-ties are expected, not defects. The warm arm is the stable one across
+engine changes; when a digest moves, it is usually the cold arm that moved.
+
+> **Prior art.** Automatic prefix caching as popularized by vLLM and now common in serving stacks — reuse KV for shared prefixes.
+> **How we differ.** We require exact warm-restore (token-identical) with verified zero cross-request leakage, and classify where exactness holds vs a salt/text-only caveat.
+> **Our finding.** *Extends prior art* — most APC implementations optimize hit-rate; we add a bit-exactness + leakage-safety classification.
+
+---
+
+## Compiled decode replay
+
+Each decode step normally rebuilds its compute graph on the host every token.
+Framework tracing (MLX's `mx.compile`) can trace that step **once** and *replay*
+the traced graph on every subsequent token, deleting the per-token host graph
+construction. On a large MoE model at batch size M=1 the replayed step ran
+**~1.109x faster** than the pipelined rebuilt graph (roughly 129 → 143 tok/s at
+1K context), emitting **one trace per completion**.
+
+The precondition is a **shape-stable cache**. Every array the step touches must
+keep its shape: KV stored as a preallocated ring buffer with the write position
+as an *array* input (not a Python int), fixed-size ledgers, and no `.item()` or
+shape-branching inside the step. A cache that grows by concatenation in blocks
+breaks the trace and forces a rebuild.
+
+```python
+import mlx.core as mx
+
+# Shape-stable cache: preallocated ring, position is an ARRAY, never a Python int.
+class RingKVCache:
+    def __init__(self, n_layers, n_kv_heads, head_dim, capacity):
+        shape = (n_layers, 1, n_kv_heads, capacity, head_dim)
+        self.keys   = mx.zeros(shape)
+        self.values = mx.zeros(shape)
+        self.offset = mx.array(0)          # in-graph, so the trace stays valid
+
+# The step is a pure function of (token, state) -> (logits, state).
+# mx.compile traces it once; later calls replay the traced graph.
+@mx.compile
+def decode_step(token, keys, values, offset):
+    logits, keys, values = _forward(token, keys, values, offset)
+    return logits, keys, values, offset + 1   # thread state as return values
+```
+
+!!! danger "A fast-math kernel can make replay numerically diverge"
+    Early replay diverged from stock decode. The cause was *not* the replay
+    machinery — it was the compiler fusing `sigmoid` down to a fast-exp
+    approximation. On 3,840 real activations the fused form sat **1.52x further
+    from an fp64 reference** than the eager op (max 4 ULP), enough to flip greedy
+    tokens by ~40 layers deep. The fix was a `precise::exp` variant expressed
+    through a custom Metal kernel that is *opaque to fusion*, restoring
+    bit-identical arithmetic. After it, 128 greedy steps were **bit-identical to
+    the stock cache**, with one trace serving all 128 replays. Lesson: pick a
+    statistic that *separates the variants you have* — a pooled RMS said 1.0012
+    and would have called this a benign reorder, because the fast exp only bites
+    at large magnitude and RMS dilutes it.
+
+> **Prior art.** MLX `mx.compile` graph capture/replay over shape-stable KV caches (e.g. RingKVCache).
+> **How we differ.** We applied compile+replay to the single-token (M=1) decode step with a shape-stable cache and hit a compiled fast-exp/sigmoid defect that a precise-exp kernel fixed.
+> **Our finding.** *Extends prior art* — ~1.109x at M=1, bit-identical after the exp fix; documents a real correctness pitfall of naive compilation.
+
+### The gain is short-context; the ring buffer is a cost
+
+The host work compiled replay removes is roughly *fixed*, while GPU work grows
+with context, so the win narrows as the prompt lengthens. Over a context ladder
+the whole-conversation gain was **~1.04–1.10x, bit-identical to stock** up to
+about 16K, then crossed over: ~1.003x at 128K and ~0.967x at 256K, where the
+padded ring slab costs more than the host time it saves.
+
+Two caveats worth internalizing:
+
+- **The ring cache is itself a tax.** An explicit `[1,1,N,capacity]` mask is a
+  slower attention path than a plain `mask=None`, so the shape-stable cache adds
+  a few percent on its own; compiled replay has to earn that back before it nets
+  out positive. Oversized capacity buckets are worse — a slab sized to 32768 for
+  ~16K live columns tripped a pathological attention block-selection path (+37%
+  in one case) that had nothing to do with the ring itself.
+- **M>1 does not benefit.** At verify width 3 the lever is a wash at short
+  context and a loss at long — it is a single-user, M=1 lever, not a
+  speculative-verify one. See [speculative decoding](speculative-decoding.md)
+  for why the wide-verify path has a different cost structure.
+
+### Composing replay with prefix caching
+
+Compiled replay and APC want the same thing — to skip work between turns — but
+naively they don't stack: an APC hit returns a *private* deepcopy of the cache,
+and if the replay path only recognizes caches it "owns," it declines on every
+hit and reverts to the slow rebuilt graph. In one six-turn agent measurement the
+default configuration actually *regressed* to 0.729x because the compiled path
+never published its state back and so never hit. The fix is to let the hit reuse
+the compiled step and publish the plain (non-ring) KV form back into the cache —
+never store a ring buffer in APC, which doubles slab bytes. That recovered
+**1.077x whole-conversation with identical output text**.
+
+!!! note "A single-request gate cannot see a multi-turn regression"
+    The 0.729x regression above was invisible to every single-request
+    qualification — it only appears across turns. A **multi-turn harness**
+    (here, six turns) has to be part of the gate for any lever that touches
+    cross-turn state.
+
+---
+
+## Composed levers need their interactions tested
+
+The clearest cautionary tale is a **prompt-lookup / cache-hit interaction bug**.
+An adaptive prompt-lookup decoder with a short warm-up window (8 cycles) worked
+fine cold — ~50 cycles, 86% acceptance, ~250 tok/s on a retrieval workload — but
+when the *same* request was served from an APC hit it latched **off** after two
+cycles and ran the rest as plain decode at ~113 tok/s, a **0.45x** hit-vs-cold
+ratio. Root cause: the acceptance rate-gate's wall-clock window opened *before*
+the first verify forward, so the cache-restore and kernel warm-up were divided
+into the first few tokens and read as a low rate. Arming the window *after* the
+first speculative cycle fixed it (hit/cold back to **0.992**).
+
+Neither lever was wrong alone. The bug lived entirely in their composition — and
+only a test that ran prompt-lookup *on a cache hit* could find it. When you stack
+serving levers, test the cross-product of their states, not each lever in
+isolation.
+
+> **Prior art.** None directly.
+> **How we differ.** We composed a short-warmup prompt-lookup decoder with an APC hit, where the cache-hit mis-latched the warm-up path off.
+> **Our finding.** *Extends prior art* — the mis-latch ran 0.45x→0.99x after the fix; composed levers need their interactions tested, not just each alone.
+
+---
+
+## Megakernels
+
+A megakernel computes an entire token — all layers plus the output projection —
+in a **single persistent GPU dispatch**, instead of the ~hundreds-to-thousands
+of dependent kernel launches a normal forward pass issues. On a launch-bound
+decode path this deletes the per-dispatch floor. It is a real lever: on a large
+MoE model, plain decode measured **~1.68–1.81x** over stock across a context
+ladder (e.g. 1.74x at 32K rising to 1.77x at 128K, still 1.68x near 256K), with
+identical greedy digests. A recurrent/GDN family reached similar
+**1.72x/1.77x** at 1K/16K on plain decode.
+
+> **Prior art.** Kernel fusion / persistent (megakernel) approaches in GPU inference generally.
+> **How we differ.** We built a whole-token persistent megakernel as a decode lane on Apple Metal and measured its costs.
+> **Our finding.** *Extends prior art* — ~1.68–1.81x plain decode, with two documented constraints: a per-dispatch cost (~29us) that makes naive op-by-op splitting bit-identical yet ~0.36x, and grid-size>residency deadlocking the grid barrier.
+
+But it comes with hard constraints that a normal kernel does not have.
+
+### The dispatch cost is per-binary, and it is large
+
+A tempting middle ground is to split the token into a few persistent "glue"
+segments and let ordinary matmul kernels do the rest. It was built and it is
+**bit-identical** to the single megakernel — and **0.36x stock** (77 ms vs 28 ms
+at 1K). The reason:
+
+```text
+# Measured per-dispatch cost of the SAME persistent binary:
+#   one megakernel dispatch  ~29 us   (many bindings, persistent grid)
+#   one ordinary MLX kernel   ~2 us
+#
+# Splitting a token into N dispatches of the persistent binary pays ~29 us x N.
+# At 242 dispatches/token:  242 * 29 us = ~7 ms of pure launch overhead,
+# a >31.7 ms lower bound  vs  ~28 ms for the whole stock token.
+```
+
+The launch floor is a property of the *binary you dispatch*, not a universal
+"~2 us per kernel." Measure the floor of the kernel you will actually launch
+before designing around it. (A host-side variant that walks phases in Python is
+worse still: the graph *build* alone cost more than a whole stock token, and
+async evaluation cannot hide it — the walk scales with phases, not dispatches.)
+
+### Occupancy is a correctness parameter
+
+For a persistent kernel the grid must be fully resident, because its threadgroups
+spin on a device-scope barrier. If the launch grid exceeds resident capacity
+(e.g. a threads-per-core × groups product tuned for one geometry, reused at a
+wider one), the grid barrier **deadlocks** and wedges the GPU — recoverable only
+by reboot. The same applies to killing a run: never `SIGKILL` a process with a
+persistent dispatch in flight; its threadgroups keep spinning on the device with
+no owning process. Let the launch finish or use the kernel's abort flag.
+
+!!! warning "Treat every persistent launch as a device-acknowledged transaction"
+    A host return from the launch is *not* evidence the grid completed. The
+    device must publish an abort count and final phase, and the host must
+    synchronize and validate both before exposing any output or committing state.
+    State that cannot alias its input — recurrent and convolution state, and any
+    other non-aliasable side state — is written to a separate buffer and swapped
+    only on commit; a second launch
+    is illegal until the first is committed or rolled back.
+
+### Fidelity: near-fp32, not bit-exact
+
+Folding a whole token into one kernel changes reduction order, so a megakernel is
+typically **not token-exact** with stock — it lands in a "closer-to-fp32 than
+stock" tolerance class. That has to be gated on *behavior over natural text*, not
+on a distance: one build passed eight boundary tables, a bit-identity proof of
+its attention phase, a 46-test suite and a 128-token greedy gate **while it could
+not attend its own three most recent tokens**. Two documents of teacher-forced
+perplexity found the defect in ~100 seconds (+0.033 nats). A component's
+bit-identity proof does not cover the component's *caller*, and a random-token
+fixture suppresses exactly the local-context term a masking defect removes. Gate
+on mean NLL over real text with a document-level confidence interval; keep the
+distance metrics for attribution, not acceptance.
+
+### Where the megakernel actually pays back
+
+Fusing dispatches only helps if dispatch overhead was on the critical path.
+On a recurrent/GDN family the fused-forward passes are **GPU-bound** — the
+host-exposed fraction is only ~4.1–4.5% at width 1 and ~0% at the width-3 verify
+slab. So the megakernel's dispatch-fusion optimizes a cost that is already
+nearly gone *inside* the forward, which is why its curve flattens there.
+
+The large multi-turn win from a megakernel came from a different place:
+**publishing its state back into the prefix cache**. With APC publish-back, a
+multi-turn conversation dropped from **~33.5s to ~14.0s** (~2.4x) with decode
+speed unchanged and the published state CPU-byte-lossless. The win is
+orchestration *between* forwards (skipped prefill on the next turn), not anything
+inside the GPU-bound forward.
+
+> **Prior art.** None directly.
+> **How we differ.** We publish prefix state back from the megakernel lane into the prefix cache.
+> **Our finding.** *Extends prior art* — cut a measured multi-turn time ~33.5s→14.0s with decode unchanged; the win is orchestration between forwards.
+
+### Megakernel and self-speculation can be mutually exclusive
+
+On a recurrent/GDN family the megakernel and self-MTP speculation **do not
+compose** — they are substitutes, not complements. Two independent reasons:
+
+1. The MTP draft head reads a *pre-mixer* hidden tensor that the megakernel's
+   fused schedule computes internally and does not surface in a form the draft
+   path can consume. (This tap is cheap to add, but adding it does not change
+   the verdict.)
+2. Priced head to head, the wide verify slab inside the megakernel runs at
+   **~0.71–0.74x** of the stock fused verify, and the combined draft+verify
+   round comes out to **~0.92–1.03x** of the stock speculative round — a wash.
+   Speculation already earns its keep by making a wide verify nearly free in a
+   launch-bound engine; the megakernel has *already spent* that same launch
+   budget, so there is nothing left to compose.
+
+The general principle: **compose only levers that share state and attack
+different costs.** Two levers that both delete the launch floor overlap rather
+than stack.
+
+> **Prior art.** None.
+> **How we differ.** We tried composing the megakernel with self-MTP speculation on a recurrent/GDN family.
+> **Our finding.** *Extends prior art* — the two cannot compose (the MTP head drafts from a pre-mixer tensor the megakernel doesn't emit); compose only levers that share state.
+
+---
+
+## Batching vs single-user changes the calculus
+
+The right serving lever depends heavily on whether you are optimizing one
+interactive stream or many concurrent ones.
+
+**Single user.** Decode is latency-bound and the queue is width 1. Here
+self-speculation (a self-MTP head verifying its own drafts) is usually the
+winner — on the models above it beat plain decode by ~1.9–2.3x across contexts
+and beat plain megakernel decode at every context measured. Compiled replay adds
+a further small win at short context on top of plain decode. The megakernel's own
+prize is **plain** single-user decode and the long-context regime where the
+baseline collapses — precisely where speculation's acceptance falls off.
+
+| Lever | Single user | Many concurrent users |
+|---|---|---|
+| Self-MTP speculation | Strong (fills width for one user) | Weak — adds width the batch already has |
+| Plain batching | N/A | Strong (fills width across users) |
+| Megakernel (plain) | Good, best at long context | Real width-1 steps exist here; niche |
+| Compiled replay (M=1) | Good at short context | Superseded by batch scheduling |
+
+**Many users.** A full batch already supplies the arithmetic width that
+speculation manufactures for a single stream, so self-MTP added on top of an
+already-wide batch *loses*. The lever that supplies width across users is
+ordinary continuous batching. A cost model calibrated at one batch width does not
+transfer: an admission controller with only a memory ceiling admitted 2.5x past
+the throughput knee on a small model, because free RAM scales with model size
+while GPU compute saturation is fixed — cap by **both**.
+
+The single-user floor, once speculation and an async-dispatch overlap are in
+place, is the GPU roofline itself: on the recurrent family the remaining
+per-round host idle was ~3ms (~8%), mostly already hidden, and idle CPU there is
+the *signature* of a GPU-bound roofline, not spare capacity to reclaim. Know
+which regime you are in before you reach for a lever built for the other.
+
+---
+
+## Sources
+
+Public, upstream concepts this chapter builds on:
+
+- **`mx.compile`** — MLX's graph tracing/replay, the mechanism behind compiled
+  decode replay.
+- **MLX ring / rotating KV caches** — the shape-stable cache class compiled
+  replay requires; see the MLX-LM cache implementations and `--max-kv-size`.
+- **Prefix caching** — general automatic-prefix-cache / content-addressed KV
+  reuse as described in the vLLM and SGLang literature, and the KV-leakage
+  analyses that exempt content-addressed caches.
+- **Persistent / megakernels** — the "one kernel per token" pattern from the
+  persistent-kernel literature (e.g. Mirage-style persistent kernels and
+  monokernel decode work on other accelerators), here retargeted to Metal via
+  custom-kernel compilation.
+
+All quantitative figures are from lab measurements on Apple M5 Max hardware and
+should be treated as directional for that hardware class, not as portable
+constants. Re-measure on your own device and model before adopting any lever.

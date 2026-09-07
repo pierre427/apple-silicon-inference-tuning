@@ -1,0 +1,57 @@
+site_name: Apple Silicon Inference Tuning
+site_description: A measured field guide to serving LLMs fast on Apple Silicon (M-series), MLX-first.
+site_url: ""
+repo_url: ""
+docs_dir: docs
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: black
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: black
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.top
+    - toc.follow
+    - content.code.copy
+    - content.code.annotate
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - footnotes
+  - toc:
+      permalink: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.inlinehilite
+  - pymdownx.details
+  - pymdownx.tabbed:
+      alternate_style: true
+
+nav:
+  - Home: index.md
+  - The hardware model: hardware.md
+  - Environment & build: environment.md
+  - Runtime & OS knobs: runtime-knobs.md
+  - Quantization: quantization.md
+  - Speculative decoding & MTP: speculative-decoding.md
+  - Serving-level techniques: serving-techniques.md
+  - Measuring it right: measurement.md
