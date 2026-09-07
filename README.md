@@ -56,6 +56,10 @@ technique carries a **Prior art / How we differ / Our finding** block stating
 whether our measurement was *consistent with*, *extends*, or *diverges from*
 the published work.
 
+## License
+
+MIT — see [LICENSE](LICENSE).
+
 ---
 
 *A public distillation of internal serving work. It documents techniques and
@@ -63,7 +67,3 @@ measurements; it is not affiliated with or endorsed by Apple or any model
 vendor. Measurements were taken primarily on an M5-generation Max part
 (macOS 26); numbers scale with the specific part's memory bandwidth and GPU
 core count.*
-
-## License
-
-MIT — see [LICENSE](LICENSE).
