@@ -15,6 +15,15 @@ bits-per-weight does **not** automatically mean faster. See also
 differently, and [measurement methodology](measurement.md) for how these numbers
 were taken.
 
+![Relative decode throughput versus bits-per-weight, comparing the bandwidth-only ideal against the real curve that includes dequantization overhead](assets/quant-bpw.svg)
+
+*A calculated model of the trade. The bandwidth-only ideal (∝ 1/bits) keeps
+rising as precision drops; the real curve flattens because a roughly fixed
+dequantization cost per weight does not shrink with the bits. The widening gap
+is the dequant tax — which is why 4-bit is often the sweet spot and 2-bit rarely
+pays off proportionally. The M5 Neural Accelerators can move this optimum;
+measure on your own model.*
+
 !!! note "Evidence discipline"
     Every figure below comes from a measured run or a cited primary source. Where
     a claim is a transfer from another platform (e.g. a llama.cpp result on M2

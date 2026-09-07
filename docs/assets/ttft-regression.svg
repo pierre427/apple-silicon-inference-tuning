@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 460" width="760" height="460" role="img">
+<rect x="0.5" y="0.5" width="759" height="459" rx="10" fill="#fcfcfb" stroke="#e5e7eb"/>
+<line x1="74.0" y1="56.0" x2="74.0" y2="402.0" stroke="#e6e8ec" stroke-width="1" opacity="1" stroke-linecap="round"/>
+<line x1="237.0" y1="56.0" x2="237.0" y2="402.0" stroke="#e6e8ec" stroke-width="1" opacity="1" stroke-linecap="round"/>
+<line x1="400.0" y1="56.0" x2="400.0" y2="402.0" stroke="#e6e8ec" stroke-width="1" opacity="1" stroke-linecap="round"/>
+<line x1="563.0" y1="56.0" x2="563.0" y2="402.0" stroke="#e6e8ec" stroke-width="1" opacity="1" stroke-linecap="round"/>
+<line x1="726.0" y1="56.0" x2="726.0" y2="402.0" stroke="#e6e8ec" stroke-width="1" opacity="1" stroke-linecap="round"/>
+<line x1="74.0" y1="402.0" x2="726.0" y2="402.0" stroke="#e6e8ec" stroke-width="1" opacity="1" stroke-linecap="round"/>
+<line x1="74.0" y1="315.5" x2="726.0" y2="315.5" stroke="#e6e8ec" stroke-width="1" opacity="1" stroke-linecap="round"/>
+<line x1="74.0" y1="229.0" x2="726.0" y2="229.0" stroke="#e6e8ec" stroke-width="1" opacity="1" stroke-linecap="round"/>
+<line x1="74.0" y1="142.5" x2="726.0" y2="142.5" stroke="#e6e8ec" stroke-width="1" opacity="1" stroke-linecap="round"/>
+<line x1="74.0" y1="56.0" x2="726.0" y2="56.0" stroke="#e6e8ec" stroke-width="1" opacity="1" stroke-linecap="round"/>
+<line x1="74.0" y1="402.0" x2="726.0" y2="402.0" stroke="#334155" stroke-width="1.4" opacity="1" stroke-linecap="round"/>
+<line x1="74.0" y1="56.0" x2="74.0" y2="402.0" stroke="#334155" stroke-width="1.4" opacity="1" stroke-linecap="round"/>
+<line x1="74.0" y1="402.0" x2="74.0" y2="407.0" stroke="#334155" stroke-width="1.2" opacity="1" stroke-linecap="round"/>
+<text x="74.0" y="422.0" fill="#475569" font-size="12" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" text-anchor="middle" font-weight="normal">0</text>
+<line x1="237.0" y1="402.0" x2="237.0" y2="407.0" stroke="#334155" stroke-width="1.2" opacity="1" stroke-linecap="round"/>
+<text x="237.0" y="422.0" fill="#475569" font-size="12" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" text-anchor="middle" font-weight="normal">300</text>
+<line x1="400.0" y1="402.0" x2="400.0" y2="407.0" stroke="#334155" stroke-width="1.2" opacity="1" stroke-linecap="round"/>
+<text x="400.0" y="422.0" fill="#475569" font-size="12" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" text-anchor="middle" font-weight="normal">600</text>
+<line x1="563.0" y1="402.0" x2="563.0" y2="407.0" stroke="#334155" stroke-width="1.2" opacity="1" stroke-linecap="round"/>
+<text x="563.0" y="422.0" fill="#475569" font-size="12" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" text-anchor="middle" font-weight="normal">900</text>
+<line x1="726.0" y1="402.0" x2="726.0" y2="407.0" stroke="#334155" stroke-width="1.2" opacity="1" stroke-linecap="round"/>
+<text x="726.0" y="422.0" fill="#475569" font-size="12" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" text-anchor="middle" font-weight="normal">1200</text>
+<line x1="69.0" y1="402.0" x2="74.0" y2="402.0" stroke="#334155" stroke-width="1.2" opacity="1" stroke-linecap="round"/>
+<text x="65.0" y="406.0" fill="#475569" font-size="12" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" text-anchor="end" font-weight="normal">0</text>
+<line x1="69.0" y1="315.5" x2="74.0" y2="315.5" stroke="#334155" stroke-width="1.2" opacity="1" stroke-linecap="round"/>
+<text x="65.0" y="319.5" fill="#475569" font-size="12" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" text-anchor="end" font-weight="normal">5</text>
+<line x1="69.0" y1="229.0" x2="74.0" y2="229.0" stroke="#334155" stroke-width="1.2" opacity="1" stroke-linecap="round"/>
+<text x="65.0" y="233.0" fill="#475569" font-size="12" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" text-anchor="end" font-weight="normal">10</text>
+<line x1="69.0" y1="142.5" x2="74.0" y2="142.5" stroke="#334155" stroke-width="1.2" opacity="1" stroke-linecap="round"/>
+<text x="65.0" y="146.5" fill="#475569" font-size="12" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" text-anchor="end" font-weight="normal">15</text>
+<line x1="69.0" y1="56.0" x2="74.0" y2="56.0" stroke="#334155" stroke-width="1.2" opacity="1" stroke-linecap="round"/>
+<text x="65.0" y="60.0" fill="#475569" font-size="12" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" text-anchor="end" font-weight="normal">20</text>
+<text x="74.0" y="26.0" fill="#1f2937" font-size="16" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" text-anchor="start" font-weight="600">Separating TTFT from decode: wall-clock vs output tokens</text>
+<text x="400.0" y="444.0" fill="#475569" font-size="13" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" text-anchor="middle" font-weight="normal">output tokens generated</text>
+<text x="18" y="229.0" fill="#475569" font-size="13" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" text-anchor="middle" transform="rotate(-90 18 229.0)">end-to-end wall-clock  (s)</text>
+<circle cx="287.4" cy="279.2" r="3.2" fill="#64748b" stroke="white" stroke-width="1.4"/>
+<circle cx="416.4" cy="227.8" r="3.2" fill="#64748b" stroke="white" stroke-width="1.4"/>
+<circle cx="125.6" cy="373.9" r="3.2" fill="#64748b" stroke="white" stroke-width="1.4"/>
+<circle cx="132.8" cy="357.7" r="3.2" fill="#64748b" stroke="white" stroke-width="1.4"/>
+<circle cx="348.6" cy="267.5" r="3.2" fill="#64748b" stroke="white" stroke-width="1.4"/>
+<circle cx="472.1" cy="218.0" r="3.2" fill="#64748b" stroke="white" stroke-width="1.4"/>
+<circle cx="441.5" cy="237.9" r="3.2" fill="#64748b" stroke="white" stroke-width="1.4"/>
+<circle cx="612.7" cy="134.0" r="3.2" fill="#64748b" stroke="white" stroke-width="1.4"/>
+<circle cx="178.1" cy="341.4" r="3.2" fill="#64748b" stroke="white" stroke-width="1.4"/>
+<circle cx="200.3" cy="331.8" r="3.2" fill="#64748b" stroke="white" stroke-width="1.4"/>
+<circle cx="479.1" cy="208.4" r="3.2" fill="#64748b" stroke="white" stroke-width="1.4"/>
+<circle cx="126.6" cy="362.2" r="3.2" fill="#64748b" stroke="white" stroke-width="1.4"/>
+<circle cx="504.3" cy="206.4" r="3.2" fill="#64748b" stroke="white" stroke-width="1.4"/>
+<circle cx="366.1" cy="258.2" r="3.2" fill="#64748b" stroke="white" stroke-width="1.4"/>
+<circle cx="573.7" cy="169.7" r="3.2" fill="#64748b" stroke="white" stroke-width="1.4"/>
+<circle cx="409.9" cy="248.7" r="3.2" fill="#64748b" stroke="white" stroke-width="1.4"/>
+<circle cx="534.2" cy="181.3" r="3.2" fill="#64748b" stroke="white" stroke-width="1.4"/>
+<circle cx="344.7" cy="245.7" r="3.2" fill="#64748b" stroke="white" stroke-width="1.4"/>
+<circle cx="182.8" cy="347.9" r="3.2" fill="#64748b" stroke="white" stroke-width="1.4"/>
+<circle cx="555.6" cy="175.5" r="3.2" fill="#64748b" stroke="white" stroke-width="1.4"/>
+<circle cx="623.1" cy="150.7" r="3.2" fill="#64748b" stroke="white" stroke-width="1.4"/>
+<circle cx="443.2" cy="213.3" r="3.2" fill="#64748b" stroke="white" stroke-width="1.4"/>
+<circle cx="601.4" cy="144.7" r="3.2" fill="#64748b" stroke="white" stroke-width="1.4"/>
+<circle cx="127.2" cy="374.2" r="3.2" fill="#64748b" stroke="white" stroke-width="1.4"/>
+<circle cx="484.1" cy="190.5" r="3.2" fill="#64748b" stroke="white" stroke-width="1.4"/>
+<circle cx="325.1" cy="281.3" r="3.2" fill="#64748b" stroke="white" stroke-width="1.4"/>
+<circle cx="104.0" cy="376.3" r="3.2" fill="#64748b" stroke="white" stroke-width="1.4"/>
+<circle cx="126.2" cy="369.6" r="3.2" fill="#64748b" stroke="white" stroke-width="1.4"/>
+<circle cx="169.0" cy="351.4" r="3.2" fill="#64748b" stroke="white" stroke-width="1.4"/>
+<circle cx="139.3" cy="355.5" r="3.2" fill="#64748b" stroke="white" stroke-width="1.4"/>
+<circle cx="424.7" cy="222.2" r="3.2" fill="#64748b" stroke="white" stroke-width="1.4"/>
+<circle cx="259.7" cy="322.0" r="3.2" fill="#64748b" stroke="white" stroke-width="1.4"/>
+<circle cx="308.6" cy="270.1" r="3.2" fill="#64748b" stroke="white" stroke-width="1.4"/>
+<circle cx="197.5" cy="354.5" r="3.2" fill="#64748b" stroke="white" stroke-width="1.4"/>
+<circle cx="232.3" cy="335.4" r="3.2" fill="#64748b" stroke="white" stroke-width="1.4"/>
+<circle cx="92.8" cy="385.0" r="3.2" fill="#64748b" stroke="white" stroke-width="1.4"/>
+<circle cx="315.0" cy="306.6" r="3.2" fill="#64748b" stroke="white" stroke-width="1.4"/>
+<circle cx="404.0" cy="254.2" r="3.2" fill="#64748b" stroke="white" stroke-width="1.4"/>
+<circle cx="501.8" cy="180.9" r="3.2" fill="#64748b" stroke="white" stroke-width="1.4"/>
+<circle cx="622.5" cy="138.5" r="3.2" fill="#64748b" stroke="white" stroke-width="1.4"/>
+<circle cx="329.1" cy="282.3" r="3.2" fill="#64748b" stroke="white" stroke-width="1.4"/>
+<circle cx="128.2" cy="357.1" r="3.2" fill="#64748b" stroke="white" stroke-width="1.4"/>
+<circle cx="217.3" cy="314.6" r="3.2" fill="#64748b" stroke="white" stroke-width="1.4"/>
+<circle cx="90.4" cy="379.9" r="3.2" fill="#64748b" stroke="white" stroke-width="1.4"/>
+<circle cx="152.0" cy="360.7" r="3.2" fill="#64748b" stroke="white" stroke-width="1.4"/>
+<circle cx="464.0" cy="215.7" r="3.2" fill="#64748b" stroke="white" stroke-width="1.4"/>
+<path d="M74.0,394.7 L726.0,98.2" fill="none" stroke="#4f46e5" stroke-width="2.8" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="74.0" cy="394.7" r="4.5" fill="#e11d48" stroke="white" stroke-width="1.4"/>
+<line x1="74.0" y1="394.7" x2="122.9" y2="348.4" stroke="#e11d48" stroke-width="1" stroke-dasharray="3,3" opacity="1" stroke-linecap="round"/>
+<text x="125.6" y="346.6" fill="#e11d48" font-size="11.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" text-anchor="start" font-weight="normal">intercept = TTFT ≈ 0.42 s</text>
+<line x1="400.0" y1="246.4" x2="563.0" y2="246.4" stroke="#0d9488" stroke-width="1.6" opacity="1" stroke-linecap="round"/>
+<line x1="563.0" y1="246.4" x2="563.0" y2="172.3" stroke="#0d9488" stroke-width="1.6" opacity="1" stroke-linecap="round"/>
+<text x="571.0" y="209.4" fill="#0d9488" font-size="11.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" text-anchor="start" font-weight="normal">slope = 1/decode-t/s</text>
+<text x="571.0" y="225.4" fill="#0d9488" font-size="11.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" text-anchor="start" font-weight="600">→ decode ≈ 70 tok/s</text>
+<text x="88.0" y="392.0" fill="#475569" font-size="11" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" text-anchor="start" font-weight="normal" font-style="italic">Each dot is one request. The blend of TTFT + decode is only separable across many outputs.</text>
+</svg>

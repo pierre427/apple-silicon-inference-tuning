@@ -130,6 +130,15 @@ and peak memory while walking the intended context and concurrency range.
 Hybrid recurrent models do not fit this simple formula exactly; inventory their
 fixed recurrent state and full-attention layers separately.
 
+![KV-cache size versus context length for full attention versus a windowed cache, against a fixed wired-memory budget](assets/kv-budget.svg)
+
+*A calculated model for an illustrative 48-layer bf16 model. Full attention
+grows linearly with context and crosses a fixed wired-memory budget at some
+context length — past that point you stall or OOM. A rotating/windowed cache
+flattens once the window fills, trading exact long-range recall for a bounded
+footprint. Plug your own layer/head geometry into the calculator above to find
+your own crossover.*
+
 **How to apply.** Start from the longest context whose information the
 application genuinely needs, multiply by peak concurrent sequences, and see if
 the total budget fits. If it does not, choose explicitly among a shorter window,

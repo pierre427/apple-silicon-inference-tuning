@@ -55,6 +55,14 @@ numbers at once: the **intercept is TTFT**, and the **inverse of the slope is
 steady-state decode t/s**. This is the lab's own method and it is the technique
 this handbook recommends over any single blended figure.
 
+![Wall-clock time versus output tokens across many requests, with a fitted line whose intercept is TTFT and whose slope is one over decode throughput](assets/ttft-regression.svg)
+
+*The method as a picture (illustrative points). Each dot is one request; a
+single request cannot separate the fixed and per-token costs, but the fit across
+many does: the **intercept is TTFT** and the **inverse slope is steady-state
+decode t/s**. A blended "tokens ÷ total time" number is just one dot's slope
+from the origin — and on short outputs it badly understates decode speed.*
+
 ```python
 # Illustrative only. Recover TTFT and steady-state decode t/s from many calls.
 # Each call generates a different number of output tokens against a FIXED prompt.

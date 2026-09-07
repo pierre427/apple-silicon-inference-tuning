@@ -48,6 +48,13 @@ mkdocs serve          # live preview at http://127.0.0.1:8000
 mkdocs build --strict # static site into ./site
 ```
 
+The figures are **calculated model curves**, generated as dependency-free SVG
+from the formulas and measured anchor points in the text:
+
+```bash
+python3 scripts/make_figures.py   # regenerates docs/assets/*.svg (stdlib only)
+```
+
 ## House rule
 
 Every figure came off a real machine. Where a claim is an extrapolation, a

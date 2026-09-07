@@ -96,6 +96,14 @@ difference between reaching them and not is this table.
     faster) is simply wrong on pre-M5 parts. Know which generation you're on
     before you copy a tuning recipe.
 
+![End-to-end Neural-Accelerator speedup as a function of how much of a request's time is spent in prefill](assets/phase-amdahl.svg)
+
+*A calculated model (Amdahl's law) anchored to the two measured speedups —
+prefill ≈3.5×, decode ≈1.2×. The end-to-end win a workload sees depends almost
+entirely on its prefill share: a long-context RAG job lands near 2.6×, a
+short-prompt chat turn barely past 1.5×. This is why "which phase am I bound
+by?" is the first question, not an afterthought.*
+
 ## Unified memory is the decode ceiling
 
 Apple Silicon shares one pool of memory between CPU and GPU. Two practical

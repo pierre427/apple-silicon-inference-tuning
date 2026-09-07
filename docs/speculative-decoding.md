@@ -114,6 +114,15 @@ to load or keep resident. This is the technique behind mlx-lm **PR #990**
 | dense 27B | **1.32×–1.57×** | 85–88% |
 | MoE | **1.03×–1.11×** | 5–11% |
 
+![Speculative/MTP decode speedup versus draft acceptance rate, with ideal ceilings and the measured dense and MoE operating points](assets/spec-crossover.svg)
+
+*A calculated model. The dashed ceilings are the overhead-free maximum for a
+draft of length γ (pure math: `E[tokens/cycle] = (1−αᵍ⁺¹)/(1−α)`); the solid
+line is a single-token self-MTP draft once per-cycle overhead is included, which
+pulls a low-acceptance draft **below** break-even (1.0×) — a net loss. The
+measured operating points land where you'd expect: dense models at high
+acceptance win, MoE at ~5–11% acceptance barely clears break-even.*
+
 Two things to take from this:
 
 1. **A single MTP layer cannot predict sparse-expert routing.** With 256
@@ -265,6 +274,14 @@ extract-and-reformat, tool-call echoes) and loses on generative prose, where
 there is nothing to look up and the draft/verify overhead is pure tax. It is a
 **retrieval-only lever**: enable it for copy workloads, keep it off (or make it
 adaptive/greedy-gated) for prose.
+
+![Prompt-lookup decoding speedup versus the fraction of output that is verbatim copied from context, crossing break-even around 25 percent](assets/pld-crossover.svg)
+
+*A calculated model of PLD's workload dependence. Speedup rises with the copy
+fraction and crosses break-even (1.0×) at roughly a quarter of the output being
+copyable: below that it is a net loss, above it a growing win — matching the
+measured ~0.70× on prose and ~1.9× on retrieval/copy. The lesson is that PLD's
+sign, not just its magnitude, depends on the workload.*
 
 > **Prior art.** The general prompt-lookup-decoding technique (n-gram copy from context).
 > **How we differ.** Measured across workload types rather than a single benchmark.
