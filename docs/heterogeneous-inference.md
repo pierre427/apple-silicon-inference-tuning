@@ -165,6 +165,62 @@ and was dramatically worse. The monolithic wider-verifier route is closed until
 a different allocation domain or multi-kernel design beats the measured cost
 budgets.
 
+!!! warning "Correction: \"peak register usage sets occupancy\" is obsolete on M3 and later"
+    We described this cliff, and two similar results, with the model that a
+    single dispatch gets one register allocation sized by its widest phase, so
+    every other phase pays that maximum. **On Apple family 9 GPUs and later that
+    model is no longer correct.** Apple states that before family 9 the
+    allocation "would be equal to the maximum register usage at any point in the
+    program", but that with the family 9 dynamic shader core memory feature "the
+    maximum register usage no longer dictates how many SIMDgroups can be run",
+    because register memory is allocated and released over the lifetime of the
+    shader according to what each part actually uses. Family 9 is M3; M5 is
+    family 10.
+
+    Consistent with that, pipeline reflection on our own kernels reports
+    `maxTotalThreadsPerThreadgroup` of 1024 for bodies of quite different width.
+    So the cliff above is real and measured, but the *mechanism* we attributed it
+    to probably is not. The likelier mechanism is **live ranges**: a persistent
+    kernel holds per-query state live across phase boundaries, which is exactly
+    what defeats lifetime-based deallocation, and the pressure then shows up as
+    graded L1 residency with hardware occupancy throttling rather than a hard
+    allocation cliff.
+
+    This changes what to try. Shrinking a phase's peak usage is the old fix.
+    The new one is **shortening live ranges** so the hardware can release
+    between phases, reloading or recomputing at phase entry instead of carrying
+    values through. On family 9 and later the instruments are the Occupancy
+    Manager Target and L1 Residency counters, not a register count — and there is
+    no Metal API that reports registers directly. The one officially sanctioned
+    observable is `MTLComputePipelineState.maxTotalThreadsPerThreadgroup`.
+
+    We have not yet re-measured the widths above against that model. Read the
+    table as a measured cost curve, not as an explanation.
+
+!!! tip "Where the speculative round's decode budget actually goes"
+    A timed-vs-exposed decode-wall attribution (greedy, `num_draft=2`, fused
+    GDN verify, **persistent megakernel off** — this is the ordinary eager
+    forward, not the megakernel lane) pins the blame on the **verify step**,
+    not on host orchestration. At 4K and 16K context the per-round wall is 38.0
+    and 39.9 ms, and the span bracketing the verify boundary is 28.8 and 29.9
+    ms, about **73%** of the wall.
+
+    Be careful reading that 28.8 ms: splitting the span shows it is almost
+    entirely the **GPU drain of the verify forward**, waited on at the first
+    synchronization after the drafts were dispatched. The host-side accept work
+    itself — comparing tokens, scanning the accepted prefix, trimming caches —
+    is about **0.2 ms**. Accept is therefore not a fusion candidate, and a
+    bucket named for a host step can be almost entirely device time. Recoverable
+    host orchestration across the whole round is around 3 ms, the largest piece
+    being draft-chain control.
+
+    So **the lever is the verifier cost itself**, which is what the width-3
+    ceiling work above is trying to shrink. Any accelerator-side proposer that
+    hopes to help must amortize or offload that verify step; moving the draft
+    work alone leaves it on the critical path. The ~3 ms of real host
+    orchestration is better attacked by overlapping it — see
+    [per-layer submission pipelining](serving-techniques.md#submit-each-layer-as-you-build-it).
+
 ## Compression and handoff details were first-order
 
 The initial ANE package duplicated about 111 MB of FP16 weights. Core ML
@@ -301,6 +357,18 @@ remains intentionally held because the target verifier caps perfect acceptance
 at **1.226x**. Reopen it only if width-3 verification falls from 36.393 ms to
 **29.748 ms or less**—an 18.3% reduction before reserve—or a new wider verifier
 demonstrates a better measured ceiling.
+
+!!! warning "A token-exact proposer can still corrupt downstream state"
+    Before that reopen, one more gate is now known. A width-3 commit oracle that
+    compared the unfused commit against the sequential reference matched the
+    top-1 token across the whole run — yet diverged from the first non-exact
+    phase onward: the attention reduction carried a max-abs of ~1.2, and the
+    recurrent state had ~25.4M of 25.7M elements mismatched. **The next token
+    was right; the next-step input was not.** So a proposer that passes the
+    token-acceptance ceiling is *not* automatically safe to hand a multi-kernel
+    state to — the handoff consumes the (divergent) state, not the token. Treat
+    "verifier ceiling satisfied" and "state faithful" as two separate sign-offs;
+    fix attention-reduction faithfulness before any phase-local ANE allocation.
 
 ## Qualification checklist
 

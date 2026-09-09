@@ -435,6 +435,33 @@ validate nothing forever. After regenerating any baseline, **assert the tracked
 count is nonzero** and matches what you expect. A fail-closed guard that
 silently tracks nothing is worse than no guard.
 
+**6. Toggle the arms inside one process, not one process per arm.** This is
+the rule that costs the most to learn late. A per-boot A/B — launch the server
+with the feature off, measure, kill it, launch with the feature on, measure —
+compares two *machine states* as much as two configurations: different thermal
+history, a different page cache, a different allocator arrangement. On a
+128 GB machine with a ~100 GB resident model, the second boot is not the same
+machine as the first.
+
+> Measured cost of getting this wrong: a scheduling change was screened with one
+> boot per arm and recorded as **−24% at 16K and −48% at 64K** on plain decode,
+> and was shelved on that basis. Re-measured with both arms as runtime toggles
+> inside a single model load, median of three thermally-settled repetitions, the
+> same code in the same cells measured **+21% and +24%**. The harness inverted
+> the sign of a 24-point effect.
+
+Make every lever a runtime setter rather than an import-time or launch-time
+flag. It costs one function and one counter per lever, it lets a single model
+load cover every arm, and it removes the confound entirely. When a lever
+genuinely cannot be toggled at runtime, interleave boots (`off, on, on, off`)
+and report the spread between same-arm boots as a noise floor before quoting any
+difference.
+
+**A corollary about rotation.** Interleaving by rotating a list of arms shifts
+the whole list, so it never flips the *relative* order of two arms that sit next
+to each other. If exactly two arms matter, run them as a two-arm list over two
+repetitions, which puts each one first exactly once.
+
 ### A small paired harness
 
 Interleave arms so slow machine drift does not line up with one configuration.

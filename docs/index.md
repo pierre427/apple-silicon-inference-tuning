@@ -36,10 +36,11 @@ before you reach for it.
 | 2 | **Exact prefix caching (APC)** | up to **~2.4× multi-turn** (e.g. ~33.5 s → 14 s) | Repeated / shared context, multi-turn chat | [Serving-level techniques](serving-techniques.md) |
 | 3 | **Megakernel decode lane** (where it applies) | **~1.68–1.81×** | Short-context decode on supported models | [Serving-level techniques](serving-techniques.md) |
 | 4 | **Speculative decoding / native MTP** | dense **~1.3–1.6×**; MoE **~1.03–1.11×** | Single-user decode, dense models most | [Speculative decoding & MTP](speculative-decoding.md) |
-| 5 | **Weight quantization** | proportional to bytes-per-weight saved | Decode / bandwidth-bound; also fits bigger models | [Quantization](quantization.md) |
-| 6 | **Prompt-lookup decoding (PLD)** | **~1.9× copy**, but **~0.7× on prose** | Retrieval / copy-heavy workloads only | [Speculative decoding & MTP](speculative-decoding.md) |
-| 7 | **Compiled decode replay** | **~1.1×** | Decode with shape-stable caches | [Serving-level techniques](serving-techniques.md) |
-| 8 | **Wired-memory limit + KV sizing** | removes stalls (prevents a cliff, not a multiplier) | Large models / long contexts | [Runtime & OS knobs](runtime-knobs.md) |
+| 5 | **Per-layer submission pipelining** (overlap host graph building with GPU execution) | **~1.15–1.24×**, bit-identical | Narrow forwards: decode and speculative verify | [Serving-level techniques](serving-techniques.md) |
+| 6 | **Weight quantization** | proportional to bytes-per-weight saved | Decode / bandwidth-bound; also fits bigger models | [Quantization](quantization.md) |
+| 7 | **Prompt-lookup decoding (PLD)** | **~1.9× copy**, but **~0.7× on prose** | Retrieval / copy-heavy workloads only | [Speculative decoding & MTP](speculative-decoding.md) |
+| 8 | **Compiled decode replay** | **~1.1×** | Decode with shape-stable caches | [Serving-level techniques](serving-techniques.md) |
+| 9 | **Wired-memory limit + KV sizing** | removes stalls (prevents a cliff, not a multiplier) | Large models / long contexts | [Runtime & OS knobs](runtime-knobs.md) |
 
 Two things that are **not** in the table because they *cost* throughput or do
 nothing, and knowing that saves you a weekend:

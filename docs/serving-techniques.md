@@ -230,6 +230,64 @@ never store a ring buffer in APC, which doubles slab bytes. That recovered
 
 ---
 
+## Submit each layer as you build it
+
+A lazy array framework builds a whole graph before it runs anything. For a
+48-layer decoder that means the host spends its time building nodes while the
+GPU has no work, then the GPU spends its time executing while the host has
+nothing left to do. The two costs alternate when they could overlap.
+
+The fix is one line inside the layer loop: after each layer, issue a
+**non-blocking** evaluation of the running hidden state so the work built so far
+is submitted while the host builds the next layer.
+
+```python
+for layer, layer_cache in zip(self.layers, cache):
+    hidden = layer(hidden, ...)
+    if pipeline_submits:          # decode/verify widths only
+        mx.async_eval(hidden)     # submit, do not block
+```
+
+The blocking variant (`eval`) destroys the benefit: it waits, which is the
+serialization you are trying to remove. The non-blocking variant forces *when* a
+value is computed, never *what* it is, so the token stream is bit-identical.
+Verify that with a digest, not by inspection.
+
+**Measured, 4-bit MoE model with a native MTP head, medians of three settled
+repetitions, every arm bit-identical:**
+
+| Context | Plain decode | Self-speculative decode |
+|---|---:|---:|
+| 1K | **+19.9%** | **+20.2%** |
+| 16K | **+20.8%** | **+20.6%** |
+| 64K | **+24.0%** | **+15.9%** |
+
+Three things make this worth its own section.
+
+**Gate it by row count.** Apply it only when the forward is narrow — a
+single-token decode step or a small speculative verify slab. A prefill slab of a
+few thousand rows already saturates the GPU, and its host cost is amortized over
+those rows, so there is no idle to fill and only submission overhead to add. A
+threshold on `batch × sequence` around 64 is a reasonable default.
+
+**Submitting more often was better, not worse.** The obvious worry is command
+buffer overhead: 48 submissions per token instead of one. A variant submitting
+every fourth layer, 12 per token, was **worse in all eight cells** (+10% to +16%
+against +15% to +24%). On this hardware the GPU is starved harder than the extra
+submissions cost, at every context tested. Do not assume the opposite without
+measuring it.
+
+**It composes with speculation rather than competing with it.** The gain appears
+on both plain and speculative decode. Speculative rounds have host-side
+serialization points (an accept boundary, draft-chain control) that break
+cross-token pipelining, and this fills exactly that idle.
+
+!!! warning "This is the lever most likely to be mis-screened"
+    Our own first screen of this change recorded a large *regression* on
+    long-context plain decode and shelved it. That screen booted a fresh server
+    per arm. See rule 6 in [A/B discipline](measurement.md#ab-discipline): the
+    result reversed completely under same-boot toggling.
+
 ## Composed levers need their interactions tested
 
 The clearest cautionary tale is a **prompt-lookup / cache-hit interaction bug**.
