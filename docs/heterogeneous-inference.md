@@ -300,6 +300,137 @@ This is the central composition rule:
     weight sharing, megakernel fusion, and batch width before it counts as a
     gain.
 
+## Cache branching can hide setup work, not target verification
+
+A follow-up campaign on the same Qwen4-class serving stack examined the
+roughly 0.6-second preparation interval for two-row self-MTP. Most of that
+interval was target/MTP catch-up plus construction of the physical B=2 cache,
+not Python object cloning: cloning the target cache cost about 40--42 ms, while
+generator preparation cost 535--597 ms.
+
+The first pass tested ways to avoid, defer, or share that cache work. The
+thermally interleaved 64-token A/B results were mostly negative:
+
+| Preparation candidate | Prep ratio | Decode tok/s ratio | Total-wall ratio | Decision |
+|---|---:|---:|---:|---|
+| consume an already-prepared GDN live tip | **0.983x** | **1.026x** | **1.010x** | hold default-off; one bracket is not promotion evidence |
+| extend the QSA tail horizon | **0.899x** | **1.027x** | **0.984x** | reject |
+| physically materialize immutable B=2 fan-out | **0.940x** | **1.007x** | **0.982x** | reject |
+| immutable fan-out plus QSA horizon | **0.943x** | **1.044x** | **1.006x** | reject as a prep lever; apparent total win is too small for one bracket |
+| consume live tip plus QSA horizon | **0.927x** | **1.005x** | **0.977x** | reject |
+
+Ratios above 1 are better. The live-tip path is the only candidate worth
+keeping behind a switch: it improved decode by about 2.6%, but preparation got
+about 1.7% slower and total wall improved only about 1.0%. It needs repeated
+thermal brackets and composition with the production levers before it should
+become a default.
+
+We also corrected a tempting but invalid coalescing experiment. Coalescing the
+target's canonical `(T-1)+1` tail into one `T`-token call changed the recurrent
+and attention kernel geometry, so it was not a valid performance comparison.
+Restricting coalescing to the MTP teacher-forcing tail restored exactness, but
+still did not pay:
+
+| Corrected MTP-only arm | Prep ratio | Decode tok/s ratio | Total-wall ratio |
+|---|---:|---:|---:|
+| coalesced tail alone | 0.979x | 1.010x | 0.999x |
+| live-tip consume plus coalesced tail | 0.952x | 1.012x | 0.990x |
+
+The experimental runtime hooks were removed. This is a useful general rule for
+hybrid recurrent models: two call schedules that consume the same token count
+are not necessarily equivalent. Preserve the target's established state-update
+geometry unless continuation-state equivalence has been proved.
+
+### A cheap branch descriptor is not a cheap cache consumer
+
+At a 16,376-token prefix, 26 BF16 state tensors occupied 536,477,760 bytes for
+B=1. Creating a descriptor or zero-stride B=2 view was nearly free, but the
+first operation that needed private or contiguous storage paid the bill:
+
+| Operation | Median | Active allocation |
+|---|---:|---:|
+| stop-gradient B=1 descriptor | 0.066 ms | 0 |
+| zero-stride B=2 broadcast | 0.059 ms | 0 |
+| physical B=1 `mx.array` copy | 9.039 ms | 536,739,840 bytes |
+| physical B=2 concatenate | 16.658 ms | 1,073,053,696 bytes |
+| first append through B=1 descriptor | 8.797 ms | 536,739,840 bytes |
+| first append through B=2 broadcast | 16.367 ms | 1,073,479,680 bytes |
+| private eight-token B=2 delta only | 0.276 ms | 262,080 bytes |
+| ready B=2 capsule build | 16.191 ms | 1,090,093,056 bytes |
+| first patch into an already-ready capsule | 0.298 ms | 0 |
+
+The segment-aware representation remains attractive--a shared immutable
+prefix plus a tiny private delta--but only if downstream kernels consume it
+directly. Stock fused SDPA did not. On a 16K attention probe, physical B=2 KV
+ran in 0.464 ms, while the exact zero-stride broadcast took 0.801 ms and added
+33,828,864 transient bytes. The shared view achieved only **0.579x** of the
+physical path, so broadcast shared-prefix SDPA is rejected for this consumer.
+
+### CPU is an acceptable fallback for cache copies; ANE overlaps better
+
+Direct e5rt exposes no supported "force this ANE graph onto CPU" switch, so a
+resident NumPy copy was used as the deliberate CPU control. It was not
+crippling in isolation, but its overlap with a concurrent Metal concatenate
+degraded as the cache grew:
+
+| B=1 input / B=2 output | CPU only | ANE only | GPU only | CPU + GPU | ANE + GPU |
+|---|---:|---:|---:|---:|---:|
+| 4 / 8 MiB | 0.108 ms | 0.184 ms | 0.210 ms | 0.184 ms | 0.189 ms |
+| 16 / 32 MiB | 0.463 ms | 0.499 ms | 0.271 ms | 0.560 ms | 0.514 ms |
+| 32 / 64 MiB | 0.944 ms | 0.942 ms | 0.427 ms | 1.122 ms | 0.973 ms |
+
+At the largest case, ANE retained 92.9% overlap efficiency versus 58.5% for
+the CPU control; the CPU concurrent wall was about 15.3% slower. CPU is still
+a sensible opportunistic lane for cache packing, metadata, hashing, eviction,
+tokenization, scheduler bookkeeping, lookup/decompression, serialization, and
+precomputed masks--provided none of those paths introduces a GPU readback or a
+new synchronization point.
+
+### The ANE cache capsule transport boundary is viable
+
+The positive systems result is a bit-preserving cache transport capsule. An
+e5rt B=1-to-B=2 concatenate was consumed by MLX through
+`mx.from_dlpack(..., copy=False)` and then by a real Metal equality kernel while
+the e5rt program and buffer owner remained pinned. FP16 input staging, adoption,
+alias coherence, and the Metal consumer were exact at 4, 16, and 32 MiB:
+
+| B=1 input | Resident ANE | MLX input -> e5rt + execute | MLX no-copy adoption | Metal consumer |
+|---:|---:|---:|---:|---:|
+| 4 MiB | 0.220 ms | 0.265 ms | 0.027 ms | 0.347 ms |
+| 16 MiB | 0.511 ms | 0.764 ms | 0.027 ms | 0.741 ms |
+| 32 MiB | 0.946 ms | 1.508 ms | 0.034 ms | 0.922 ms |
+
+Real Qwen cache state is BF16, so a second probe carried BF16 payloads as
+opaque `uint16` bits through the same FP16-shaped e5rt graph. It was bit-exact
+at all three sizes, retained alias coherence, used `copy=False`, and kept the
+owner alive through Metal consumption. No-copy adoption was 0.027, 0.028, and
+0.033 ms; MLX-input staging plus execution was 0.266, 0.783, and 1.486 ms.
+This qualifies **transport and materialization**, not native BF16 ANE arithmetic
+and not use-after-owner-release. A production lease must pin the e5rt program,
+output view, and adopted MLX alias until the GPU consumer has synchronized.
+
+The implication for speculative validation is deliberately narrow:
+
+!!! note "This does not buy a second validator"
+    Cache transport can reduce setup bubbles and keep another speculative row
+    admission-ready for a wider GPU batch. It does not make target-model
+    verification run on CPU or ANE: authoritative target verification still
+    traverses the GPU model. The measured savings are sub-millisecond cache
+    movement beside a tens-of-milliseconds target verify, so describe this as
+    scheduler readiness, not another validation lane.
+
+Exact source artifacts for this campaign:
+
+```text
+mlx-uag/results/qwen4-gdn-prep-matrix-64tok-20260910.json
+mlx-uag/results/qwen4-gdn-prep-mtp-coalesced-tail-64tok-20260910.json
+mlx-uag/results/cache-branch-state-microbench-20260910.json
+mlx-uag/results/cache-shared-prefix-attention-20260910.json
+mlx-uag/results/ane-gpu-cache-overlap-cpu-control-20260910.json
+mlx-uag/results/ane-cache-capsule-ingress-lifetime-20260910.json
+mlx-uag/results/ane-cache-capsule-bf16-bits-20260910.json
+```
+
 ## Candidate ledger
 
 The campaign deliberately screened adjacent ideas rather than repeatedly
