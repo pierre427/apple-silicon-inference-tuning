@@ -501,6 +501,87 @@ demonstrates a better measured ceiling.
     "verifier ceiling satisfied" and "state faithful" as two separate sign-offs;
     fix attention-reduction faithfulness before any phase-local ANE allocation.
 
+## Follow-through: transport is not product overlap
+
+The next production-shaped gate corrected an over-broad reading of the cache
+capsule microbench.  At a 16K QSA-plane shape (H2, D128, B2; 16 MiB input and
+32 MiB capsule), e5rt did overlap useful work: 26.247 ms overlapped versus
+37.455 ms serial.  But the ordinary GPU consumer finished in **11.628 ms**.
+The e5rt product path was therefore only **0.443x** the incumbent, despite
+hiding about 11.2 ms of its own serial time.  A matched asynchronous CPU arm
+was 16.811 ms and a GPU-built capsule was 14.607 ms.
+
+This distinction is essential on unified memory:
+
+- **Alias and ownership proof:** an accelerator result can be adopted safely;
+- **overlap proof:** independent engines can execute concurrently; and
+- **product proof:** the complete producer, readiness wait and consumer beat
+  the existing path.
+
+Passing the first two does not imply the third.  Keep the generation-stamped,
+exactly-once release/abort machinery—it prevents real use-after-release and
+leak bugs—but leave production cache construction on the GPU for this shape.
+Also do not enter an MLX GPU stream from an arbitrary host worker: stage raw
+bits on the owning thread, perform genuinely host-only work in the worker, and
+adopt the result back into MLX on the owning thread.
+
+## Follow-through: shared-prefix consumers must share the expensive read
+
+An immutable-base/private-delta cache can remove B-times-prefix construction
+and still lose at decode.  In accepted, swap-flat, thermally interleaved
+full-model tests, a Qwen4 private-delta consumer reached only **0.8907x** the
+physical-B2 decode rate at 16K/256 output tokens and **0.9100x** at 32K/256.
+It avoided hundreds of gigabytes of cumulative duplicate-base formation over
+thousands of layer calls, but each row still reread the same immutable pages.
+
+Real B2 topology receipts showed the lever the representation alone had
+missed: all 65 simultaneous query cohorts selected exactly the same base-page
+set for both rows (Jaccard 1.0), giving a topology-only ceiling of 50% fewer
+base reads.  The resulting exact-set fold:
+
+1. proves ordered selected-page equality with a device-resident predicate;
+2. reads each shared base page once while maintaining row-private softmax
+   accumulators;
+3. keeps suffix work private; and
+4. executes the exact row-local path inside the kernel on every proof miss.
+
+There is no `.item()` or host decision in the hot path.  At 16K B2, a
+101-repetition direct Metal gate was raw-bit exact for M1--M4.  The fold was
+**1.078x** faster than the private-delta path and **1.072x** faster than
+physical B2 at M3; at M1 it was 1.040x faster than private delta but 0.987x
+physical.  The durable rule is to share the controlling bandwidth work, not
+merely the object that names it, and to gate by query shape because M1 and M3
+can have different crossovers.
+
+The runtime result is smaller but reproducible. Three accepted 16K/256-token
+brackets improved the already gated private-delta lane by 2.38%, 0.49% and
+0.42% decode, with a **0.49% median** and zero proof/dispatch fallbacks across
+8,814 folded calls. That justifies selecting the fold inside admitted B2
+private-delta traffic; it does not promote private delta over physical B2,
+which remained about 9--11% faster in separate accepted 16K/32K tests.
+
+Host work has a different useful boundary. A process-local cache of exact
+request rendering and tokenization reduced a 5,374-token real-tokenizer
+component from 4.832 ms to 0.091 ms (53.1x). A live server then proved repeat
+hits, response-level cached prompt tokens, soft-reload invalidation and
+post-reload repopulation. Keep this opt-in for known-pure tokenizers: it is a
+high-churn request-preparation lever, not a decode throughput claim.
+
+## Follow-through: screen confidence routers by perfect-oracle budget
+
+Confidence is useful for allocating verification width only when the width
+increment is large enough to pay for extracting and routing on the signal.  A
+current K=2 trace with 196 proposals, 157 accepted tokens and 98 cycles bounds
+even a perfect oracle to **0.535--0.816%** of verifier projection time—only
+4.44--6.77 microseconds of total decision budget per cycle.  A synthetic
+5-microsecond router made the best arm 0.9940x.
+
+Do not add a synchronized confidence trace just to discover this afterward.
+Compute the perfect-oracle ceiling first.  Reopen the router when telemetry is
+already available without synchronization, draft depth reaches at least four,
+or measured full-model verification width is materially steeper than its
+projection-only model.
+
 ## Qualification checklist
 
 Use this order; each step has an early stop.
