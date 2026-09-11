@@ -121,7 +121,10 @@ For every arm, retain:
 
 For speculation, also retain proposed width, accepted prefix length, committed
 tokens per cycle, and draft/verify/rollback time. For APC, retain
-`cached_tokens`, match kind, cache format, and publish-back state.
+`cached_tokens`, match kind, cache format/layout version, publish-back state,
+and whether the boundary was committed. For segmented APCv2, also retain plane,
+layer, segment, fallback/materialization, stale-rejection, and dropped-MTP-plane
+counters.
 
 ## Fast decision rules
 
@@ -131,6 +134,9 @@ tokens per cycle, and draft/verify/rollback time. For APC, retain
 2. Measure model-only TTFT separately from queue and tokenization.
 3. If prefixes repeat, assert APC extension and shared-prefix hits.
 4. If every prompt is unique, optimize cold prefill; APC has nothing to reuse.
+5. For hybrid or MTP models, require an explicit APCv2 layout and a
+   proposal-rejection rollback test; never infer cache compatibility from KV
+   length alone.
 
 ### Short prompt, long answer
 

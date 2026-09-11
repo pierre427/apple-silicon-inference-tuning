@@ -92,6 +92,98 @@ ends at the expected token boundary and only the suffix is prefetched. For a
 miss, assert `cached_tokens == 0`; false hits are correctness bugs, while false
 misses are performance bugs.
 
+### APCv2: make every model declare its cache layout
+
+An attention-only APC entry can look like one object even when it contains one
+KV cache per layer. That abstraction stops being sufficient once a model mixes
+attention, recurrent state, rotating windows, QSA summaries, and a persistent
+MTP head. Those pieces have different token geometry, rollback behavior, and
+eviction value. Treating them as one anonymous object either forces expensive
+copies or invites partial restores that combine incompatible generations.
+
+The safer migration pattern is a separate **APCv2** contract:
+
+- Leave legacy APC unchanged for models that do not opt in.
+- Require each v2 model family to declare a versioned layout name. A layout is
+  code plus an invariant, not merely a string stamped on old cache objects.
+- Keep one atomic, committed token boundary for correctness, but own and account
+  for storage by `plane / layer / segment`.
+- Split ordinary attention KV and QSA summaries into immutable prefix and short
+  mutable-tail segments; describe rotating attention as a window and recurrent
+  GDN state as a state segment.
+- Store persistent MTP state as its own plane. A stale required target segment
+  rejects the whole boundary; a stale MTP segment disables speculation while
+  retaining a valid target restore.
+
+This separates *storage granularity* from *semantic atomicity*. Segments may be
+shared copy-on-write, evicted, compressed, or placed differently, but a request
+never assembles a target state from different committed generations.
+
+#### Capture the retry boundary before speculation starts
+
+Continuous self-MTP needs more than the completion cache. For a prompt of
+length `P`, capture a retry checkpoint immediately before processing the final
+prompt token: target coverage `P-1`, draft coverage `P-2`, plus the hidden seed
+and RNG position that will predict token `P-1`. This is the last boundary at
+which no proposal is in flight. Publish a later completion checkpoint only
+after the speculative transaction commits or rolls back.
+
+```python
+# Conceptual APCv2 publication protocol.
+retry = checkpoint(
+    target_coverage=P - 1,
+    mtp_coverage=P - 2,
+    hidden_seed=hidden,
+    rng_state=rng_state,
+    committed=True,
+)
+apc_v2.publish(retry)
+
+proposal = mtp.propose(retry)
+accepted, correction = target.verify(proposal)
+restore(retry)                    # return to the committed generation
+replay(accepted, correction)      # advance only durable tokens
+discard(proposal[len(accepted):]) # rejected drafts never enter APC
+apc_v2.publish(checkpoint(committed=True))
+```
+
+Do not prune an exact MTP checkpoint merely because the target KV cache can be
+trimmed to the same nominal token count: recurrent/draft state is generally
+exact-boundary-only. A publication API should reject any checkpoint not
+explicitly marked committed.
+
+#### What the first Qwen4-class gate showed
+
+At a 16,378-token repeated prompt and 256-token greedy completion, the broken
+self-MTP path restored zero prompt tokens: **11.304 s TTFT, 16.911 s wall, and
+45.489 decode tok/s**. APCv2 restored **16,377 / 16,378** prompt tokens and ran
+at **0.088 s TTFT, 5.573 s wall, and 46.486 decode tok/s**. The cache held 172
+segments across two retained boundaries: GDN state, attention KV, QSA summary,
+and MTP draft planes. Each measured request proposed 203 draft tokens, accepted
+153, and discarded 50. A forced-zero-acceptance test separately proved that a
+rejected proposal could not mutate the stored retry checkpoint.
+
+The segmented descriptor-COW snapshot is the default for this v2 boundary,
+with independent deep copy as a compatibility fallback. Snapshot bookkeeping
+was sub-millisecond in the measured bracket and did not create a wall-time or
+decode-throughput regression. These numbers repair a false cache miss; they do
+not show that segmentation makes a cache hit intrinsically faster than an
+already-correct monolithic restore.
+
+!!! warning "Segmentation is not zero-copy consumption yet"
+    The current v2 gate makes ownership, accounting, and invalidation
+    canonical, but reconstructs the model's native concrete cache graph on
+    restore. A later consumer can read physically discontiguous segments
+    directly only after its attention/recurrent kernels are explicitly wired
+    for that representation. Until then, measure coalescing/materialization
+    cost and do not advertise descriptor-COW as a free physical branch.
+
+**Migration gate per model family:** declare the layout; enumerate every state
+plane and token geometry; test miss, repeat, extension, trim, rejection at
+positions zero through draft width, and completion publication; then run cold,
+warm, live-continuation, and multi-turn performance brackets. Opt in only after
+the model passes—never infer compatibility from class names or cache offsets.
+
 ### Classify the divergence honestly
 
 Warm-versus-cold greedy output can differ without any restore fault. Two benign

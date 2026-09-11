@@ -31,6 +31,18 @@ correct cache key binds the token sequence, model revision, positional
 semantics, and cache representation. APC saves prefill work; it does not make a
 cache miss faster. See [Prefix caching](serving-techniques.md#prefix-caching-apc).
 
+## APCv2
+
+A model-declared prefix-cache contract for architectures whose reusable state
+is more than attention KV. APCv2 keeps one atomic committed token generation
+while owning storage by plane, layer, and segment—for example attention KV,
+QSA summaries, rotating windows, recurrent GDN state, and persistent MTP state.
+Segmentation permits independent accounting, copy-on-write ownership, and
+conservative invalidation without allowing a restore to mix generations.
+Legacy APC remains the default until a model family explicitly declares and
+qualifies a v2 layout. See [APCv2: make every model declare its cache
+layout](serving-techniques.md#apcv2-make-every-model-declare-its-cache-layout).
+
 ## Compiled decode replay
 
 Tracing a shape-stable decode step once and replaying the captured graph for
