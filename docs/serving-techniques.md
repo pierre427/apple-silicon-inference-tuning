@@ -461,6 +461,40 @@ traffic, so it is valid plain-decode quality evidence and **not** an isolated
 throughput comparison or an MTP quality result. Always bind a benchmark claim
 to the mechanism receipt that proves which lane actually ran.
 
+#### Late qualification addendum: memory is part of the test gate
+
+The subsequent GPU window established the platform boundary, but not the
+requested full-model comparison. Keeping the live model protected made loading
+a second roughly 100 GB model unsafe. A two-second guard stopped the benchmark
+process group before any timing sample when swap headroom fell to **187.6 MiB**;
+the live server stayed healthy and memory recovered. Consequently, the oMLX
+#3553 bit-exact arms, unified shared-QSA performance test, and full-model
+APCv2 × MTP × GDN boundary oracle are **memory-blocked under this deployment
+constraint, not failed**. Do not turn a safety abort before measurement into a
+performance verdict.
+
+The already-running server did provide a useful deterministic route control.
+After one warm-up, a unique `temperature=0` request completed 32 tokens in
+**0.799140 s**, or **40.0431 end-to-end completion tok/s**. It restored zero
+tokens from APC and accepted **20/20** self-MTP draft tokens. This proves that
+the live segmented self-MTP route executed for that prompt; perfect acceptance
+on a counting string is not a broad quality claim.
+
+One bounded use of the same Flash-Next model as an inference-tuning subagent
+completed 512 tokens in **12.4476 s** (**41.1324 tok/s**) with zero cached prompt
+tokens and **304/413 accepted drafts (73.61%)**. Independent review scored the
+answer **3.5/10** for usefulness: it was competent but truncated, mislabeled the
+guarded memory abort once, and contributed no new mechanism. That result favors
+tightly schemaed summary work over autonomous tuning judgment.
+
+Two negative boundaries remain important. First, the earlier very slow control
+was contaminated by cold-page rewarming after the aborted second-model load and
+must not be compared with the warm request. Second, transformed-sampling MTP is
+still untested: both live controls used deterministic sampling and reported no
+transformed verifier. A future qualification window needs either the protected
+model absent or enough reserved memory for the second model, then separate
+bit-exact, tolerance-changing, APC boundary, and transformed-sampling arms.
+
 ---
 
 ## Megakernels
