@@ -614,8 +614,27 @@ the unified result must not be attributed to Rapid or oMLX.
 These results are recorded in the lab's September 12 exclusive and remaining
 composition experiments, with source/native hashes and compressed raw
 receipts. Peer feature inventory distinguishes imported Anton Bobrik #3553
-mechanisms from the lab's RMS adaptation and Rapid ports. Proposed PRs and
-comments remain drafts until operator review.
+mechanisms from the lab's RMS adaptation and Rapid ports. The focused
+submissions are public as Rapid-MLX
+[#3365](https://github.com/raullenchai/Rapid-MLX/pull/3365),
+[#3366](https://github.com/raullenchai/Rapid-MLX/pull/3366),
+[#3367](https://github.com/raullenchai/Rapid-MLX/pull/3367), and
+[#3368](https://github.com/raullenchai/Rapid-MLX/pull/3368), plus oMLX
+[#3626](https://github.com/jundot/omlx/pull/3626) and
+[#3627](https://github.com/jundot/omlx/pull/3627). Integration notes on oMLX
+[#3553](https://github.com/jundot/omlx/pull/3553#issuecomment-5649156848) and
+[#3602](https://github.com/jundot/omlx/pull/3602#issuecomment-5649156944)
+preserve the ownership and overlap boundaries.
+
+Do not compare the new Rapid and oMLX publication ladders as engine baselines.
+Rapid's 30.85--36.82 tok/s run isolates eager submission in a direct-model
+review configuration; oMLX's 75.70--81.00 tok/s run includes its broader
+speculative and custom-kernel stack. In the last matched best-stack ladder on
+identical language weights, unified measured 62.12/47.69/36.58 tok/s and oMLX
+53.15/50.96/45.66 tok/s at 1K/16K/64K. Unified still won total request wall
+time at every rung because its prefill was faster. That supports approximate
+decode parity at 16K in that dated operating point, not parity at 64K or with
+the newer oMLX composition.
 
 ---
 
