@@ -403,8 +403,9 @@ A small composition matrix catches most state bugs before a load test:
 |---|---|
 | prefix state | cold, repeat hit, extension hit, shared-prefix hit |
 | decode lane | plain, compiled, speculative / prompt-lookup |
-| cache representation | ordinary, rotating, quantized where supported |
-| outcome | full accept, early reject, trim/rollback, cancellation |
+| cache representation | ordinary, rotating, quantized where supported, segmented/shared-suffix |
+| cohort shape | uniform, ragged, preflight decline, B2-to-B1 survivor |
+| outcome | full accept, early reject, trim/rollback, cancellation, next real forward |
 
 You do not need every Cartesian-product case for every release. You do need
 pairwise coverage of any two mechanisms that read or mutate the same cache, plus
@@ -414,6 +415,51 @@ green test cannot be a silent fallback to plain decode.
 > **Prior art.** None directly.
 > **How we differ.** We composed a short-warmup prompt-lookup decoder with an APC hit, where the cache-hit mis-latched the warm-up path off.
 > **Our finding.** *Extends prior art* — the mis-latch ran 0.45x→0.99x after the fix; composed levers need their interactions tested, not just each alone.
+
+### Field report: a Qwen4 composition intake
+
+A September 2026 intake across Qwen4-class MLX implementations sharpened the
+composition rule. The important result was not a new headline multiplier; it
+was learning which evidence lets a mechanism enter a production stack.
+
+| Candidate | Evidence | Decision |
+|---|---|---|
+| Split immutable QSA prefix with private suffix | Uniform B2 storage tests passed, but ragged `[3, 1]`, forced preflight decline, and B2-to-B1 next-forward paths initially failed | Repair accepted by an independent CPU review; GPU and memory-performance qualification still required |
+| [oMLX #3553](https://github.com/jundot/omlx/pull/3553) bit-exact core | Fused GDN verify prework, grouped same-signature projections, parked-head folding, and narrow QSA were composed on a clean current tree; the author reports equal-acceptance gains from +1.2% at 16K to +14.1% at 210K | Keep as one GPU qualification arm; do not claim the external numbers locally before measuring them |
+| oMLX #3553 tolerance kernels | Gathered indexed-KV attention differs around `1e-4`; NAX QSA scores around `2e-5` | Keep each explicit opt-in and test separately: a small score delta can change a discrete top-k page set and the greedy trajectory |
+| [oMLX #3548](https://github.com/jundot/omlx/pull/3548) A8 prefill | The author reports 391.8→518.5 prompt tok/s (+32.3%) on a Qwen3.8-27B 4K prefill; the local eligible affine-Q4/Q5-g64 operator was only **0.78x** the incumbent at `M=2048` | Fail the local component gate; this does not refute the different whole-model operating point |
+| [vLLM #52244](https://github.com/vllm-project/vllm/pull/52244) page-aligned hybrid prefix fix | A local APCv2 target `P-1` / draft `P-2` sweep passed at 2,047/2,048/2,049, so no direct CPU analogue was found | Retain a real-model APCv2 × MTP × recurrent-state boundary/churn oracle before closing the risk |
+| [mlx-lm #1871](https://github.com/ml-explore/mlx-lm/issues/1871) metadata graph bound | The equivalent `mx.depends` graph-bounding mechanism was already present locally | Complementary to host mirrors that avoid membership-transition readbacks; neither substitutes for the other |
+
+The implementation receipts at this boundary were unified repair `42250f1`
+(198 authoring-suite passes plus an independent 73/73 focused CPU review),
+clean Rapid-current subset `8daf2fb`, and clean oMLX composition `9e2ce29`.
+The unified repair was published to the lab's private and public mirrors after
+that review, but remains performance-unqualified on GPU; the other two were
+build/test qualified without touching the live model.
+
+The shared-QSA failure is the reusable lesson. A split cache is not qualified
+when its storage objects merely clone, detach, and report the right offsets.
+Every *consumer* must either understand the split representation or build an
+exact temporary physical view. Then the test must execute the next attention
+forward after each membership transition. The repair's dense fallback is a
+correctness escape hatch, not a speed claim: materializing a full base per row
+and layer may be expensive and needs its own GPU/memory gate.
+
+The clean-current port to a second MLX serving stack intentionally took only
+the already-independent pieces—short-forward eager dispatch and resident-cache
+admission metadata—and left APCv2/shared-QSA out. That is the right kind of
+partial port: transfer a mechanism only when its ownership contract exists in
+the destination scheduler.
+
+Finally, path receipts mattered as much as the score. A 100-cell realistic
+sampling run scored **87/100 mechanically and 100/100 under manual semantic
+review**, but all 160 harness turns failed closed to ordinary decode because
+the transformed sampler was unsupported by the speculative verifier. Its
+5.496 completion tok/s was also measured under heavy concurrent 16K–82K
+traffic, so it is valid plain-decode quality evidence and **not** an isolated
+throughput comparison or an MTP quality result. Always bind a benchmark claim
+to the mechanism receipt that proves which lane actually ran.
 
 ---
 

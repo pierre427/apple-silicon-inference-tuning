@@ -124,7 +124,8 @@ tokens per cycle, and draft/verify/rollback time. For APC, retain
 `cached_tokens`, match kind, cache format/layout version, publish-back state,
 and whether the boundary was committed. For segmented APCv2, also retain plane,
 layer, segment, fallback/materialization, stale-rejection, and dropped-MTP-plane
-counters.
+counters. A split-cache gate must exercise uniform and ragged rows, preflight
+decline, cohort shrink to one survivor, and the survivor's next real forward.
 
 ## Fast decision rules
 
@@ -199,6 +200,8 @@ gate and the measured Qwen4-class candidate ledger.
   handoff, and lost weight sharing are usually larger than the stage removed.
 - **Combining individually fast levers without a composition matrix.** Shared
   cache state is where silent fallbacks and rollback bugs hide.
+- **Treating a tolerance-close score or attention kernel as lossless.** A
+  `1e-4` output delta can change an indexed top-k page set and later greedy text.
 - **One blended tokens/s number.** It cannot tell TTFT from decode or queueing.
 
 ## Stop conditions
@@ -213,6 +216,8 @@ Stop and investigate instead of accepting a speed number when:
 - greedy tokens or the predeclared fidelity gate fail;
 - a cache hit cannot prove how many tokens were restored;
 - a recurrent rollback restores KV but not recurrent state;
+- a split-cache lifecycle test stops before the survivor's next real forward;
+- the sampler makes the intended speculative verifier fail closed to plain;
 - the candidate retraces inside the measured decode region; or
 - a win disappears on the production-config multi-turn or loaded-service test.
 
