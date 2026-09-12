@@ -601,3 +601,11 @@ warmup work and idle intervals can change the operating state. Investigate
 those independently before attributing a throughput mode to a different
 hardware execution path. Longer sampling is a candidate probe correction,
 not permission to discard unfavorable measured arms or loosen the gate.
+
+Apply the deadline before launching another probe and before accepting its
+result. A clock-injection regression found a final probe starting at a
+120-second ceiling and incorrectly qualifying at 122.5 seconds. The shared
+helper now retains an overrun as diagnostic evidence while refusing to
+qualify it; it does not attempt to interrupt an in-flight GPU operation.
+The repair passed 49 host tests, including exact-deadline completion and
+unchanged band arithmetic.
