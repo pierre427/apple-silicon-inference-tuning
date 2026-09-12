@@ -555,3 +555,27 @@ Public tools and APIs referenced in this chapter:
   <https://ml-explore.github.io/mlx/build/html/index.html>
 - MLX-LM — reference generation and serving code used to define comparable
   prompt and decode phases: <https://github.com/ml-explore/mlx-lm>
+
+
+## A publication packet must qualify the actual mechanism
+
+Keep three evidence lanes separate: raw numerical/cache-state diagnostics,
+uninstrumented performance, and human-reviewed behavior. Same-operand shadow
+kernels or cache hashing add work and cannot provide clean timing evidence.
+A context ladder needs a warmup long enough to reach the measured generation
+paths, native extension and Metal-library hashes in addition to git commits,
+interleaved controls, and explicit functional-recovery/drift decisions.
+
+Add real multi-turn histories, including the actual assistant outputs, and
+record cache-hit and speculative-path engagement per turn. A cold standalone
+prompt does not exercise resume, parking or cached-prefix ownership. If a
+feature needs a special lifecycle, retain that diagnostic separately rather
+than pretending a generic chat turn reached it.
+
+For a small10×10 knowledge check, freeze the corpus before the run, retain
+raw responses and finish reasons for both arms, and review meaning rather
+than treating substring hits as correctness. Fix ambiguous questions before
+freezing (for example, conserved energy requires an isolated system, not
+merely a closed system). Distinguish model errors from infrastructure errors,
+truncation, and absent mechanism engagement. A100-question local regression
+check is not a standardized capability benchmark.

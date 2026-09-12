@@ -495,6 +495,62 @@ transformed verifier. A future qualification window needs either the protected
 model absent or enough reserved memory for the second model, then separate
 bit-exact, tolerance-changing, APC boundary, and transformed-sampling arms.
 
+
+#### September 12 continuation: gates reached, limits preserved
+
+The later exclusive window removed the memory-blocked condition above by
+quiescing the actual model LaunchAgents, not merely killing their child PIDs.
+The following are measured local results on the same Qwen4-class 4-bit
+checkpoint; they supersede the earlier pending status, not the historical
+measurements.
+
+| Mechanism | New local evidence | Disposition |
+|---|---|---|
+| Unified APCv2 × MTP × GDN | Six boundaries around2048/4096,18 checks per boundary including membership churn; consumer-visible target/draft/cache state exact | Correctness gate passed at tested boundaries |
+| Shared immutable QSA prefix/private suffix | All five16K lifecycle scenarios exact after preserving indexed versus dense fallback dispatch | Keep a separate serving-policy decision: one branch-to-first-commit bracket improved1.384× but decode was0.940× |
+| oMLX RMS-compatible full GDN verify |18 exact component cases and actual full-model rollback parity; exact core with grouped/narrow paths passed4/4 raw-state arms | Narrow B1/S3–4 path enabled locally by operator choice; no convincing end-to-end speed attribution |
+| Parked speculative-head folding | Native park/fold/reentry/rollback lifecycle reached with38actual tokens and fold blocks`[4,4,1]`; matched-history deferred control exact | Correctness qualified; forced scheduling and hashing are not performance evidence |
+| Native indexed gathered attention |32 same-operand probes, maximum relative error0.0063694 against a predeclared0.001 bound | Rejected; stays off even though this prompt's64tokens and log-probability probes matched |
+| NAX sparse scores |29 probes across eight context buckets; relative score error below3.90e-7, but one selected block set changed | Rejected: output, MTP acceptance and model log-probabilities then diverged |
+| Rapid safe file-backed PLE + eager dispatch |384 resident PLE tensors removed before evaluation; sampled real-row BF16 parity;16K/64-token eager ABBA exact | One repetitive-prompt bracket measured+17.80% with3.30% control drift; no broad working-set or live multi-lane claim |
+
+The exact oMLX core's later256-token ABBA had a nominal+2.60% median decode
+change and6.37% baseline drift. Do not promote that as a throughput win.
+A harness field saying the output/mechanism gate passed is not itself a
+thermal qualification. New publication ladders must satisfy functional
+recovery and a predeclared control-drift bound independently.
+
+The two GDN implementations also illustrate why a mechanical code copy is
+unsafe: native unified/Rapid Qwen4 use direct-L2 normalization; the deployed
+oMLX superclass uses RMS arithmetic. The local port retains oMLX's RMS
+contract and concrete cache-advance/rollback semantics. It does not assert
+that replacing another stack's normalization with RMS is correct.
+
+For parked heads, compare the same retained history with the same fold-block
+grouping, moved earlier in time versus deferred until reentry. Turning
+retention off is a different algorithm: draft history and acceptance can
+change while target outputs remain correct. A fixed-depth run that never
+parks says nothing about this feature.
+
+For PLE offload, qualify the loader before throughput: bind the actual
+checkpoint path, validate geometry and source identity, replace tensors
+before evaluation, reproduce dequantization rounding, and cap the row cache.
+A successful offload run is not a resident-versus-offloaded full-model parity
+test unless both representations were actually compared. Measure diverse
+working sets and eviction separately before claiming general I/O gains.
+
+The sampled unified10×10 rerun now carries request-owned engagement receipts
+for all160requests. Same-rubric qualitative review scored94/100 versus93/100
+on the earlier set, with50/50 tools in both. These are bounded sampled checks,
+not causal quality gains. Peer publication10×10 checks are separate work;
+the unified result must not be attributed to Rapid or oMLX.
+
+These results are recorded in the lab's September12 exclusive and remaining
+composition experiments, with source/native hashes and compressed raw
+receipts. Peer feature inventory distinguishes imported Anton Bobrik #3553
+mechanisms from the lab's RMS adaptation and Rapid ports. Proposed PRs and
+comments remain drafts until operator review.
+
 ---
 
 ## Megakernels
