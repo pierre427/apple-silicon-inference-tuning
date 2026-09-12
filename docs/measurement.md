@@ -580,6 +580,13 @@ merely a closed system). Distinguish model errors from infrastructure errors,
 truncation, and absent mechanism engagement. A 100-question local regression
 check is not a standardized capability benchmark.
 
+Keep a timing ladder's decode workload fixed across every arm. If an
+incidental EOS can shorten one request, record the run as incomplete or use an
+explicit benchmark-only fixed-length mode that suppresses stop handling for
+those cells. Restore normal EOS behavior for multi-turn and answer-quality
+suites; their natural stop behavior is part of the evidence. Record this mode
+in each receipt so fixed-work timing cannot be mistaken for semantic serving.
+
 ### Qualify the thermal probe itself
 
 Use the same probe duration and polling interval for the loaded baseline and

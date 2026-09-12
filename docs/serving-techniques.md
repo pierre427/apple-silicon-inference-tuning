@@ -512,10 +512,16 @@ measurements.
 | Parked speculative-head folding | Native park/fold/reentry/rollback lifecycle reached with 38 actual tokens and fold blocks `[4,4,1]`; matched-history deferred control exact | Correctness qualified; forced scheduling and hashing are not performance evidence |
 | Native indexed gathered attention | 32 same-operand probes, maximum relative error 0.0063694 against a predeclared 0.001 bound | Rejected; stays off even though this prompt's 64 tokens and log-probability probes matched |
 | NAX sparse scores | 29 probes across eight context buckets; relative score error below 3.90e-7, but one selected block set changed | Rejected: output, MTP acceptance and model log-probabilities then diverged |
-| Rapid safe file-backed PLE + eager dispatch | 384 resident PLE tensors removed before evaluation; sampled real-row BF16 parity; 16K/64-token eager ABBA exact | One repetitive-prompt bracket measured +17.80% with 3.30% control drift; no broad working-set or live multi-lane claim |
+| Rapid safe file-backed PLE + eager dispatch | 384 resident PLE tensors removed before evaluation; sampled real-row BF16 parity; repaired source passed eight exact multi-turn pairs and 100 exact domain pairs with bounded PLE engagement | The earlier +17.80% repetitive-prompt bracket predates the norm repair and is diagnostic; corrected thermal timing and live multi-lane claims remain open |
 
 The exact oMLX core's later 256-token ABBA had a nominal +2.60% median decode
 change and 6.37% baseline drift. Do not promote that as a throughput win.
+The repaired publication ladder later completed 18/18 fixed-length cells.
+Its 16K bracket qualified at 77.2034 baseline versus 78.0925 RMS tok/s
+(1.0115x) with 0.1128% control drift. The 32K and 64K brackets measured
+1.0237x and 1.0167x, but failed the functional thermal-recovery gate and remain
+diagnostics. A completed cell is not automatically qualified timing evidence;
+carry the settle verdict alongside every plotted point and aggregate claim.
 A harness field saying the output/mechanism gate passed is not itself a
 thermal qualification. New publication ladders must satisfy functional
 recovery and a predeclared control-drift bound independently.
@@ -558,6 +564,24 @@ engaged the intended MTP, RMS and grouped paths, but independent review scored
 model-quality limitations even when a kernel introduces zero regressions. Keep
 raw answers, domain-level judgments and prompt ambiguities beside the numerical
 receipt; do not turn a bespoke regression corpus into a standardized benchmark.
+
+The corrected Rapid check applied the same principle after repairing its
+checkpoint normalization convention. All 100 eager-off/on pairs matched in
+text, tokens and log-probability trajectories, all 200 answers stopped
+naturally, and both arms scored 79 factual, 96 detail, 99 format, 100
+completion and 76 all-criteria passes. Its eight-pair multi-turn companion
+also matched exactly and scored 6/8 per arm. These equal-arm results support a
+zero-regression conclusion for the tested eager scheduling path; they do not
+rank Rapid against oMLX because each stack generated a different answer set
+under a different inference path.
+
+Its repaired fixed-length ladder then qualified eager scheduling at every
+context: eager-off/on median decode was 30.851/36.819 tok/s at 16K (1.1934x),
+29.753/35.219 at 32K (1.1837x), and 26.731/31.316 at 64K (1.1715x). Median
+request wall-time gains narrowed from 1.0675x to 1.0197x as prefill dominated.
+All ABBA pairs were exact, control drift stayed below 1.53%, and all thermal
+gaps recovered. Report decode and request wall time together: a substantial
+per-token scheduling gain can yield a modest whole-request win at long context.
 
 The publication multi-turn check then exposed a serving integration boundary:
 oMLX reconstructs cached recurrent state inside a sized wrapper. The RMS path
