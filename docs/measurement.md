@@ -609,3 +609,12 @@ helper now retains an overrun as diagnostic evidence while refusing to
 qualify it; it does not attempt to interrupt an in-flight GPU operation.
 The repair passed 49 host tests, including exact-deadline completion and
 unchanged band arithmetic.
+
+The loaded follow-up did eventually satisfy the same rule at 130.162 seconds,
+just beyond the original 120-second ceiling. That observation was recorded in
+a diagnostic which deliberately ran no measured arm. The next attempt was
+declared in advance with a 300-second initial-calibration budget and
+180-second inter-arm budgets, while retaining 2.5-second probes, 15-second
+polling, the 3% three-sample band and the 5% control-drift exclusion. A longer
+time budget can make a stable measurement possible; it does not retroactively
+qualify either failed attempt or create a performance result.

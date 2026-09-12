@@ -539,6 +539,26 @@ A successful offload run is not a resident-versus-offloaded full-model parity
 test unless both representations were actually compared. Measure diverse
 working sets and eviction separately before claiming general I/O gains.
 
+Validate the checkpoint's normalization storage convention before treating
+token parity as useful inference evidence. In one Rapid Qwen4 qualification,
+the runtime implemented zero-centered RMSNorm as `1 + weight`, while the
+converted checkpoint stored direct gamma. Eager off/on remained token- and
+logprob-identical, yet both arms produced empty or incoherent short and
+multi-turn answers because both shared the same bad effective gain. A bounded
+repair used the complete attention hyper-connection norm population to admit a
+checkpoint-wide convention, converted direct gamma only when the FP32
+`1 + residual` round trip was bit-exact, and made the MTP sidecar inherit the
+backbone decision. The gated GDN norm is a separate direct-gamma class and
+must not be recentered.
+
+The paired oMLX 10-by-10 check illustrates the complementary answer-quality
+gate. All 100 optimized/control pairs matched exactly and every candidate
+engaged the intended MTP, RMS and grouped paths, but independent review scored
+84 factual and 81 all-criteria passes in each arm. Shared overstatements remain
+model-quality limitations even when a kernel introduces zero regressions. Keep
+raw answers, domain-level judgments and prompt ambiguities beside the numerical
+receipt; do not turn a bespoke regression corpus into a standardized benchmark.
+
 The publication multi-turn check then exposed a serving integration boundary:
 oMLX reconstructs cached recurrent state inside a sized wrapper. The RMS path
 now admits only that exact wrapper around an exact qualified inner cache,
