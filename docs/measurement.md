@@ -572,10 +572,32 @@ prompt does not exercise resume, parking or cached-prefix ownership. If a
 feature needs a special lifecycle, retain that diagnostic separately rather
 than pretending a generic chat turn reached it.
 
-For a small10×10 knowledge check, freeze the corpus before the run, retain
+For a small 10×10 knowledge check, freeze the corpus before the run, retain
 raw responses and finish reasons for both arms, and review meaning rather
 than treating substring hits as correctness. Fix ambiguous questions before
 freezing (for example, conserved energy requires an isolated system, not
 merely a closed system). Distinguish model errors from infrastructure errors,
-truncation, and absent mechanism engagement. A100-question local regression
+truncation, and absent mechanism engagement. A 100-question local regression
 check is not a standardized capability benchmark.
+
+### Qualify the thermal probe itself
+
+Use the same probe duration and polling interval for the loaded baseline and
+every later settle check. A reference obtained without the model loaded is
+a diagnostic of the probe, not a reference to transplant into a model run.
+Retain calibration failures even when they precede the first measured arm.
+
+In the September 12 Qwen4 publication run, one-second GEMM probes polled every
+ten seconds varied between roughly 22 and 62 TFLOP/s and failed the declared
+three-consecutive-sample, 3% stability rule. No measured ladder rows were
+produced. A separate model-free diagnostic with 2.5-second probes and
+15-second polling stabilized after 108 seconds. The next loaded run was
+configured prospectively with that same longer regime for calibration and
+settling, preserving the original stability and control-drift limits.
+
+That observation does not prove the source of the bimodality. Record setup
+work outside the timed loop too: fresh input allocations, allocator resets,
+warmup work and idle intervals can change the operating state. Investigate
+those independently before attributing a throughput mode to a different
+hardware execution path. Longer sampling is a candidate probe correction,
+not permission to discard unfavorable measured arms or loosen the gate.

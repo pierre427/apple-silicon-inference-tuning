@@ -506,16 +506,16 @@ measurements.
 
 | Mechanism | New local evidence | Disposition |
 |---|---|---|
-| Unified APCv2 × MTP × GDN | Six boundaries around2048/4096,18 checks per boundary including membership churn; consumer-visible target/draft/cache state exact | Correctness gate passed at tested boundaries |
-| Shared immutable QSA prefix/private suffix | All five16K lifecycle scenarios exact after preserving indexed versus dense fallback dispatch | Keep a separate serving-policy decision: one branch-to-first-commit bracket improved1.384× but decode was0.940× |
-| oMLX RMS-compatible full GDN verify |18 exact component cases and actual full-model rollback parity; exact core with grouped/narrow paths passed4/4 raw-state arms | Narrow B1/S3–4 path enabled locally by operator choice; no convincing end-to-end speed attribution |
-| Parked speculative-head folding | Native park/fold/reentry/rollback lifecycle reached with38actual tokens and fold blocks`[4,4,1]`; matched-history deferred control exact | Correctness qualified; forced scheduling and hashing are not performance evidence |
-| Native indexed gathered attention |32 same-operand probes, maximum relative error0.0063694 against a predeclared0.001 bound | Rejected; stays off even though this prompt's64tokens and log-probability probes matched |
-| NAX sparse scores |29 probes across eight context buckets; relative score error below3.90e-7, but one selected block set changed | Rejected: output, MTP acceptance and model log-probabilities then diverged |
-| Rapid safe file-backed PLE + eager dispatch |384 resident PLE tensors removed before evaluation; sampled real-row BF16 parity;16K/64-token eager ABBA exact | One repetitive-prompt bracket measured+17.80% with3.30% control drift; no broad working-set or live multi-lane claim |
+| Unified APCv2 × MTP × GDN | Six boundaries around 2048/4096, 18 checks per boundary including membership churn; consumer-visible target/draft/cache state exact | Correctness gate passed at tested boundaries |
+| Shared immutable QSA prefix/private suffix | All five 16K lifecycle scenarios exact after preserving indexed versus dense fallback dispatch | Keep a separate serving-policy decision: one branch-to-first-commit bracket improved 1.384× but decode was 0.940× |
+| oMLX RMS-compatible full GDN verify | 18 exact component cases and actual full-model rollback parity; exact core with grouped/narrow paths passed 4/4 raw-state arms | Narrow B1/S3–4 path enabled locally by operator choice; no convincing end-to-end speed attribution |
+| Parked speculative-head folding | Native park/fold/reentry/rollback lifecycle reached with 38 actual tokens and fold blocks `[4,4,1]`; matched-history deferred control exact | Correctness qualified; forced scheduling and hashing are not performance evidence |
+| Native indexed gathered attention | 32 same-operand probes, maximum relative error 0.0063694 against a predeclared 0.001 bound | Rejected; stays off even though this prompt's 64 tokens and log-probability probes matched |
+| NAX sparse scores | 29 probes across eight context buckets; relative score error below 3.90e-7, but one selected block set changed | Rejected: output, MTP acceptance and model log-probabilities then diverged |
+| Rapid safe file-backed PLE + eager dispatch | 384 resident PLE tensors removed before evaluation; sampled real-row BF16 parity; 16K/64-token eager ABBA exact | One repetitive-prompt bracket measured +17.80% with 3.30% control drift; no broad working-set or live multi-lane claim |
 
-The exact oMLX core's later256-token ABBA had a nominal+2.60% median decode
-change and6.37% baseline drift. Do not promote that as a throughput win.
+The exact oMLX core's later 256-token ABBA had a nominal +2.60% median decode
+change and 6.37% baseline drift. Do not promote that as a throughput win.
 A harness field saying the output/mechanism gate passed is not itself a
 thermal qualification. New publication ladders must satisfy functional
 recovery and a predeclared control-drift bound independently.
@@ -539,13 +539,35 @@ A successful offload run is not a resident-versus-offloaded full-model parity
 test unless both representations were actually compared. Measure diverse
 working sets and eviction separately before claiming general I/O gains.
 
-The sampled unified10×10 rerun now carries request-owned engagement receipts
-for all160requests. Same-rubric qualitative review scored94/100 versus93/100
-on the earlier set, with50/50 tools in both. These are bounded sampled checks,
-not causal quality gains. Peer publication10×10 checks are separate work;
+The publication multi-turn check then exposed a serving integration boundary:
+oMLX reconstructs cached recurrent state inside a sized wrapper. The RMS path
+now admits only that exact wrapper around an exact qualified inner cache,
+while preserving the outer object's commits, advancement and token count.
+All eight off/on conversation pairs matched full logits, logprobs, hidden
+and recurrent state, snapshots, output tokens and acceptance; 159 actual
+candidate rollbacks matched. Six candidate follow-up turns restored 4096
+tokens and still engaged RMS fusion. This is a stronger serving check than
+repeating unrelated cold prompts. The separate answer review passed six of
+eight turns in each arm; the same two omissions remain model-quality limits.
+
+Host lifecycle checks also belong in an offload qualification. Fork a reader
+while a parent thread holds its lock, then require the child to recover or
+refuse before touching inherited synchronization. Unified preserves its
+existing reopen contract; Rapid and oMLX refuse inherited use. None of these
+tests establish general MLX model execution after fork. On load failure,
+close only resources newly created by that load even when a traceback retains
+the partial model; preserve resources belonging to successful or concurrent
+loads. Drain submitted page reads before releasing descriptor ownership when
+one worker fails. Real descriptors, bounded child deadlines, retained
+tracebacks and injected read errors reveal bugs that output parity misses.
+
+The sampled unified 10×10 rerun now carries request-owned engagement receipts
+for all 160 requests. Same-rubric qualitative review scored 94/100 versus 93/100
+on the earlier set, with 50/50 tools in both. These are bounded sampled checks,
+not causal quality gains. Peer publication 10×10 checks are separate work;
 the unified result must not be attributed to Rapid or oMLX.
 
-These results are recorded in the lab's September12 exclusive and remaining
+These results are recorded in the lab's September 12 exclusive and remaining
 composition experiments, with source/native hashes and compressed raw
 receipts. Peer feature inventory distinguishes imported Anton Bobrik #3553
 mechanisms from the lab's RMS adaptation and Rapid ports. Proposed PRs and
