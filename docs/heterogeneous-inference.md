@@ -642,6 +642,39 @@ require source fingerprints, greedy semantics, adequate memory headroom,
 deadline and generation checks, and an explicit approximate-output contract
 before ANE can commit a token.
 
+## Real multisession composition
+
+A stronger follow-up used four real multi-turn conversation histories instead
+of a synthetic row ladder. Each lane restored a checkpointed hybrid target
+cache and persistent-MTP sidecar through APC, then entered a true batched
+segmented-MTP cohort. One row joined after two cycles; rows exited at unequal
+32/24/16/8-token budgets; per-layer cache-delta branches promoted only at the
+delivered-token boundary. A rotating independent target submitted its
+full-vocabulary head to ANE only while a speculative GPU cycle was ready.
+
+The concurrency contract held: 64/64 APC restores hit, 204 true batched
+segmented cycles engaged, 400/400 branch transactions closed, and both
+counterbalanced blocks were token-exact. Twenty-four ANE tickets became stale
+when membership changed; all were abandoned and recomputed on the GPU before
+state commit. No ticket, worker process, cache branch, or material active-memory
+allocation leaked. The associated scheduler and ownership suite passed 386
+tests plus 41 subtests.
+
+Median four-turn scheduler wall time moved from 6,984.850 ms on GPU to
+6,925.339 ms with guarded ANE, **1.0086x**. Median per-session throughput moved
+from 19.896 to 20.030 tok/s and Jain fairness from 0.96149 to 0.96298. This is a
+small, order-sensitive result: GPU-then-ANE favored ANE by about 2.6%, while
+ANE-then-GPU favored the later GPU arm by about 0.9%. Treat the center as
+directional evidence, and keep routing default-off until a longer mixed-arrival
+soak teaches an online marginal-cost policy that clears this noise envelope.
+Temperature and swap are operating context for such a sustained workload, not
+a reason to discard otherwise correct loaded-service samples.
+
+This run also illustrates why generation stamps are part of correctness. The
+ANE projection is stateless, but its answer authorizes a stateful branch. Bind
+every ticket to the membership epoch, lane IDs, request generations, and verify
+positions; a change in any field requires authoritative fallback.
+
 ## Qualification checklist
 
 Use this order; each step has an early stop.
