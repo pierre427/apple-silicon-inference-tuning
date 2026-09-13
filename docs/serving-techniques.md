@@ -835,6 +835,42 @@ history kept by the server so observability cannot become another memory leak.
 An overload ceiling should reject new requests explicitly, for example with
 HTTP 429, instead of accepting unbounded work that will miss every latency SLO.
 
+### Treat batch maturity as a lifecycle contract
+
+A throughput curve is only the first gate. A production batching lane also
+needs mixed arrivals and multi-turn sessions, graceful cancellation and abrupt
+disconnects, overload/backpressure, cache eviction and reallocation, request
+isolation canaries, bounded observability, terminal-state accounting, p95/p99
+queue/TTFT/ITL, and per-tenant fairness. Every optimized mechanism should emit
+a receipt; a green quality score is not evidence that APC, MTP, segmentation
+or the intended branch scheduler actually ran.
+
+Keep an explicit prompt-plus-output context ceiling at both admission and
+prefix-cache storage. Otherwise a server can advertise one limit, allocate or
+cache beyond it, and only fail after expensive prefill. Under pressure, reserve
+primary rows first and degrade speculative work before delaying authoritative
+tokens. Recheck memory and verification rows each cycle, because four visible
+requests can have a much wider physical verification slab.
+
+A fixed-width speculative cohort can be useful when the workload arrives in
+known groups. In a real-BF16 two-turn B4 gate, all ten requests completed,
+every target forward stayed batched, and a fifth request waited until the
+locked cohort drained. That qualifies the mechanism behind an explicit switch;
+it does not make fixed cohorts a safe interactive default, since waiting to
+form or drain the group adds avoidable latency to sparse traffic. Keep dynamic
+admission as the general serving policy and select fixed cohorts only for a
+known batch workload.
+
+Depth must be qualified again at the chosen concurrency. On a 104 GB recurrent
+MoE at four lanes, k=2 sustained width four twice and all eight deterministic
+streams matched. k=3 showed a 1.078x diagnostic throughput center, but two of
+twelve streams diverged across the bracket and a separately settled cold
+confirmation; it was rejected. k=4 had enough logical verifier rows but the
+memory controller repeatedly reduced actual generation width to three, so its
+higher displayed rate was not a four-lane result. The production choice stayed
+k=2. Acceptance rate alone would have missed the k=3 defect: every divergent
+stream reported 100% draft acceptance.
+
 The single-user floor, once speculation and an async-dispatch overlap are in
 place, is the GPU roofline itself: on the recurrent family the remaining
 per-round host idle was ~3ms (~8%), mostly already hidden, and idle CPU there is
