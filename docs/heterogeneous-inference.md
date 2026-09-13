@@ -582,6 +582,29 @@ already available without synchronization, draft depth reaches at least four,
 or measured full-model verification width is materially steeper than its
 projection-only model.
 
+## Delayed verification under batch pressure
+
+When several requests are waiting for a scarce GPU verification slot, an
+independent ANE verifier could reduce queue delay for one pending branch. The
+candidate is the exact-eligible request with the greatest expected value: rank
+by predicted acceptance with a bounded age boost, and let a starvation limit
+override probability. Return no candidate while GPU service is timely and
+memory is not pressured.
+
+This routing policy is useful before the device backend exists because it makes
+the contract testable. It must not dispatch a request to ANE until the ANE path
+has independently proved authoritative token and full-state continuation for
+that exact model, cache layout, draft depth, and sampler. Token equality alone
+does not qualify recurrent, convolution, KV, QSA, PLE, RNG, or MTP state.
+
+Treat ANE work as a separately budgeted lane. Charge its resident weights,
+handoff buffers, pending branch state, and cancellation cleanup against the
+same memory-pressure controller that limits GPU speculative rows. A late or
+cancelled result carries a request generation and is discarded without
+touching durable state. Promote the route only when a contended comparison
+improves p95/p99 latency or throughput without reducing fairness or weakening
+the strongest shared GPU batch.
+
 ## Qualification checklist
 
 Use this order; each step has an early stop.

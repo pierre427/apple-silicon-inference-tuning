@@ -807,6 +807,34 @@ Derive the width ceiling from a context-matched sweep, not from free memory.
 Track queue delay separately from model time: batching can improve aggregate
 throughput while making one interactive user's latency worse.
 
+### Budget speculative branches after primary rows
+
+The batch width above is not just the number of user requests. A speculative
+lane adds target-verification rows and retains branch-local cache and recurrent
+state. Four primary requests with a two-token draft can therefore ask the
+verifier for twelve rows, even though the scheduler reports a batch of four.
+
+Apply the verify-row budget after reserving the authoritative row for every
+primary request. For draft depth `k`, a conservative branch cap is:
+
+```text
+speculative_lanes <= floor((verify_row_cap - primary_rows) / k)
+```
+
+Recompute this cap every decode cycle and combine it with a fresh resident-
+memory estimate. Admit only the highest-value subset of eligible speculative
+lanes; as pressure rises, reduce the number of branches, then draft depth, then
+run one plain target step, and finally leave new work queued. This degradation
+order preserves correctness and service for primary requests while treating
+speculation as expendable capacity.
+
+Expose the decision in lifecycle metrics: primary rows, speculative rows,
+selected and rejected lanes, draft depth, resident and available bytes, queue
+delay, TTFT, ITL, terminal reason, and per-tenant token-rate fairness. Bound the
+history kept by the server so observability cannot become another memory leak.
+An overload ceiling should reject new requests explicitly, for example with
+HTTP 429, instead of accepting unbounded work that will miss every latency SLO.
+
 The single-user floor, once speculation and an async-dispatch overlap are in
 place, is the GPU roofline itself: on the recurrent family the remaining
 per-round host idle was ~3ms (~8%), mostly already hidden, and idle CPU there is
