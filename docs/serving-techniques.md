@@ -184,6 +184,39 @@ positions zero through draft width, and completion publication; then run cold,
 warm, live-continuation, and multi-turn performance brackets. Opt in only after
 the model passes—never infer compatibility from class names or cache offsets.
 
+### Bound prompt caches by bytes and age
+
+An entry-count cap is not a memory limit. Hybrid entries include recurrent
+state, attention KV, QSA summaries, and possibly an MTP sidecar, so their sizes
+can differ by orders of magnitude. In one live failure, a cache remained within
+its 16-entry limit while occupying 47.49 GB; combined Metal active memory was
+about 119 GB and the next batched prefill failed with an out-of-memory error.
+
+Production policy should combine three bounds:
+
+- a maximum number of retained prefixes;
+- a resident-byte ceiling that accounts for every target and speculative state
+  plane;
+- an idle age after which an unpinned, committed entry can move to a separately
+  byte-bounded disk tier.
+
+Disk restore is an atomic cache operation. Persist the target state and every
+required sidecar together, including draft state, hidden seed, covered-token
+boundary, and sampling RNG position. A missing or corrupt component must become
+a normal cache miss. Do not spill while a live copy-on-write branch pins the
+source, and schedule serialization only where it cannot race active decode.
+
+If disk files are intended to survive a server restart, bind them to a durable
+manifest containing the exact model revision, tokenizer and cache-layout
+fingerprints, format version, and committed boundary. Without that manifest,
+clear the process-local spill namespace on startup.
+
+The failure path is part of memory safety. When the sole generation worker
+dies, wake every waiting request, reject new admission, and stop the HTTP shell
+so the service supervisor can restart it. A listener that still answers a basic
+health route while generation is dead will otherwise turn a visible OOM into
+indefinitely stalled clients.
+
 ### Classify the divergence honestly
 
 Warm-versus-cold greedy output can differ without any restore fault. Two benign
