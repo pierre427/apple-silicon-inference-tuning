@@ -605,6 +605,43 @@ touching durable state. Promote the route only when a contended comparison
 improves p95/p99 latency or throughput without reducing fairness or weakening
 the strongest shared GPU batch.
 
+### Route on a marginal service curve, not queue width
+
+Queue depth and batch width are useful qualification coordinates, but they are
+not a performance model. Metal launch selection, fusion, memory traffic, and
+saturation can make the incremental cost of one more verifier row
+discontinuous. Measure the current operating point as a paired difference:
+
+`GPU service(B + target) - GPU service(B)`
+
+Then compare that marginal critical-path cost with ANE interference, ANE work
+left after useful GPU overlap, host overhead, and the final pipeline drain. A
+practical admission estimate is:
+
+`GPU marginal cost - ANE interference - residual wait - amortized drain - host overhead`
+
+On Qwen3.8-Flash-Next, a full 248,320-row FP16 vocabulary projection was split
+into five ANE-resident packages totaling 1.19 GiB. A counterbalanced service
+curve showed why no fixed width threshold is valid: the hybrid route was
+1.256x faster than inclusive GPU service with 64 other head rows, 0.988x at 96,
+1.180x at 128, and 1.052x at 256. The ANE target took roughly 10--13 ms while
+an idle affine-q4 GPU target head took roughly 0.83--1.27 ms; value came only
+from overlap and avoided marginal GPU work.
+
+A dependency-correct two-request pipeline at 128-token context improved a
+sustained 64-decision median from 1,815.98 to 1,795.53 ms, **1.0114x**. A short
+12-decision run lost 2.5% to fill/drain, 4K was neutral at 1.0005x, and the
+16K sample was negative at 0.9850x. These results qualify a narrow operating
+point, not a context-independent policy.
+
+The FP16 ANE head is also not universally token-exact to the native q4 Metal
+head. Removing the confidence guard produced the same token flip at position
+30 in every raw block. A 0.125 top-two margin gate caught it in guarded runs,
+but that is empirical protection. Keep the GPU authoritative by default;
+require source fingerprints, greedy semantics, adequate memory headroom,
+deadline and generation checks, and an explicit approximate-output contract
+before ANE can commit a token.
+
 ## Qualification checklist
 
 Use this order; each step has an early stop.
