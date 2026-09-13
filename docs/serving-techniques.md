@@ -807,6 +807,17 @@ Derive the width ceiling from a context-matched sweep, not from free memory.
 Track queue delay separately from model time: batching can improve aggregate
 throughput while making one interactive user's latency worse.
 
+Treat memory admission as an **incremental** charge. A new joining lane has no
+resident cache yet, so its projected cache belongs in the admission cost. A
+pressure-paused lane is different: if it retains its target and draft caches,
+those bytes are already included in current memory use and must not be charged
+again. Double-counting retained state can create a self-sustaining queue: in a
+live 30K-token Hermes continuation, the scheduler made 54 cycles and 54 queue
+decisions in seven seconds while delivering zero tokens. Correcting the lane's
+resident-state report restored continuous streaming; the replay's p95 and
+maximum inter-chunk gaps were 46.6 ms and 57.3 ms after a 20.54-second cold
+prefill.
+
 ### Budget speculative branches after primary rows
 
 The batch width above is not just the number of user requests. A speculative
