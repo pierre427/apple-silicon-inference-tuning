@@ -515,6 +515,64 @@ calibration pack.
 
 ---
 
+## Compress a production day for resilience testing
+
+A performance A/B and a resilience soak answer different questions. Keep
+thermal settling for causal speed comparisons. For an operational soak, let
+the machine experience the traffic naturally and record temperature alongside
+every event. Temperature, memory pressure, and contention are explanatory
+signals in this test; they must not pause or reorder the workload.
+
+A useful one-hour soak can represent a full 24-hour production day with a
+fixed virtual clock. Preserve the features that create scheduler bugs:
+
+- two or more long-lived users with independent, growing multi-turn histories;
+- serialized turns within each user, concurrent work across users;
+- short subagent and ambient jobs that arrive independently;
+- quiet periods, normal periods, and narrow coincident bursts;
+- prose, code, structured output, tool calls and results, summarization, and
+  follow-up questions that depend on facts planted earlier in the session;
+- fixed adversarial windows for cancellation, abrupt disconnect, overload,
+  cache eviction/reallocation, and lane abort; and
+- a bounded, reversible host-memory-pressure window that forces live branch
+  budgets to be recomputed; and
+- a seeded schedule that logs both planned and actual arrival time.
+
+Make the run queryable while it is active. At minimum expose current virtual
+time, completed and active requests, queue depth, errors and rejections,
+TTFT/ITL p50/p95/p99, tenant fairness, current fault window, and the next event.
+Write state atomically and append raw events so a killed monitor cannot corrupt
+the evidence.
+
+Use unique response canaries to detect cross-session contamination. Plant a
+different fact in each primary history and ask for it late in the day. Record
+terminal in-flight work, cache ownership and branch closure, RSS and descriptor
+deltas, and mechanism counters for every feature expected to participate. A
+configured APC, MTP, segmentation, or heterogeneous lane with a zero counter is
+a failed qualification, even if outputs look plausible.
+
+Apply the same rule to fault coverage. A cancellation or disconnect that never
+cuts a live stream, an injected cache fault with no server receipt, or an
+overload burst that produces no bounded rejection has not tested the named
+failure mode. Synthetic dry runs should label these gates unqualified rather
+than manufacture passing counters.
+
+On Apple Silicon, unprivileged IOHID PMU die readings can provide a useful
+temperature trace. Preserve the full sensor map and label it uncalibrated;
+record `pmset -g therm` and memory/swap pressure beside it. Do not turn an
+observational production soak into a hidden thermal gate.
+
+> **Prior art.** Production load tests commonly combine diurnal traffic models,
+> fault injection, and latency SLOs.
+> **How we differ.** We retain multi-turn cache and speculative state, prove
+> per-mechanism engagement, and record Apple-silicon thermal and unified-memory
+> context without controlling the workload.
+> **Our finding.** *Extends prior art* — a short resilience test is credible
+> only when its compressed schedule preserves session ordering, burst
+> collisions, lifecycle faults, and the exact optimized paths being qualified.
+
+---
+
 ## The real-Metal caveat
 
 A final constraint specific to this platform: **MLX correctness bugs frequently
